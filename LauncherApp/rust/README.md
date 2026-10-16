@@ -1,6 +1,6 @@
 # GrandV Back end launcher
 
-Source for the native desktop host is in this directory. Packaged executables use the name `$GrandV back-end host` (`.exe` on Windows, `.app` on macOS). The launcher includes asset download/setup instructions; game assets remain separate. See the repository Releases page for packaged downloads.
+Source for the native desktop host is in this directory. Packaged executables use the name `GrandV back-end host` (`.exe` on Windows, `.app` on macOS). The launcher includes asset download/setup instructions; game assets remain separate. See the repository Releases page for packaged downloads.
 
 Native Rust replacement for the Python/Tk launcher, HTTP server and multiplayer relay. The Python source and its release builds remain available for comparison and rollback.
 

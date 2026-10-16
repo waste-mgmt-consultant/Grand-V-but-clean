@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target/release/gta-browser-launcher.exe 'dist/$GrandV back-end host.exe'
+          Copy-Item target/release/gta-browser-launcher.exe 'dist/GrandV back-end host.exe'
           $smokePath = Join-Path (Get-Location).Path 'ui-smoke.png'
           $process = Start-Process -FilePath '.\target\release\gta-browser-launcher.exe' -WorkingDirectory (Get-Location).Path -ArgumentList '--ui-smoke', '--no-open', '--ui-screenshot', ('"' + $smokePath + '"') -WindowStyle Hidden -PassThru -Wait -RedirectStandardError 'ui-smoke-stderr.txt' -RedirectStandardOutput 'ui-smoke-stdout.txt'
           if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $smokePath)) {
@@ -54,9 +54,9 @@ jobs:
       - name: Package and smoke test macOS app
         if: runner.os == 'macOS'
         run: |
-          mkdir -p 'dist/$GrandV back-end host.app/Contents/MacOS' 'dist/$GrandV back-end host.app/Contents/Resources' target/app.iconset
-          cp target/release/gta-browser-launcher 'dist/$GrandV back-end host.app/Contents/MacOS/$GrandV back-end host'
-          cp packaging/Info.plist 'dist/$GrandV back-end host.app/Contents/Info.plist'
+          mkdir -p 'dist/GrandV back-end host.app/Contents/MacOS' 'dist/GrandV back-end host.app/Contents/Resources' target/app.iconset
+          cp target/release/gta-browser-launcher 'dist/GrandV back-end host.app/Contents/MacOS/GrandV back-end host'
+          cp packaging/Info.plist 'dist/GrandV back-end host.app/Contents/Info.plist'
           icon_source=$(find target/release/build -path '*/out/app-icon.png' -print -quit)
           test -n "$icon_source"
           for size in 16 32 128 256 512; do
@@ -64,24 +64,24 @@ jobs:
             retina=$((size * 2))
             sips -z "$retina" "$retina" "$icon_source" --out "target/app.iconset/icon_${size}x${size}@2x.png" >/dev/null
           done
-          iconutil -c icns target/app.iconset -o 'dist/$GrandV back-end host.app/Contents/Resources/app.icns'
-          plutil -lint 'dist/$GrandV back-end host.app/Contents/Info.plist'
+          iconutil -c icns target/app.iconset -o 'dist/GrandV back-end host.app/Contents/Resources/app.icns'
+          plutil -lint 'dist/GrandV back-end host.app/Contents/Info.plist'
           # Sign only after the executable, Info.plist and icon are in the final bundle.
           # This seals the app; Developer ID/notarization is still needed for trusted downloads.
-          codesign --force --sign - --timestamp=none 'dist/$GrandV back-end host.app'
-          codesign --verify --deep --strict --verbose=4 'dist/$GrandV back-end host.app'
-          ditto -c -k --sequesterRsrc --keepParent 'dist/$GrandV back-end host.app' 'dist/GrandV-Launcher-${{ matrix.artifact }}.zip'
+          codesign --force --sign - --timestamp=none 'dist/GrandV back-end host.app'
+          codesign --verify --deep --strict --verbose=4 'dist/GrandV back-end host.app'
+          ditto -c -k --sequesterRsrc --keepParent 'dist/GrandV back-end host.app' 'dist/GrandV-Launcher-${{ matrix.artifact }}.zip'
           mkdir -p target/macos-package-check target/packaged-smoke-assets
           ditto -x -k 'dist/GrandV-Launcher-${{ matrix.artifact }}.zip' target/macos-package-check
-          codesign --verify --deep --strict --verbose=4 'target/macos-package-check/$GrandV back-end host.app'
-          'target/macos-package-check/$GrandV back-end host.app/Contents/MacOS/$GrandV back-end host' --folder "$PWD/target/packaged-smoke-assets" --ui-smoke --no-open --ui-screenshot "$PWD/ui-smoke.png"
+          codesign --verify --deep --strict --verbose=4 'target/macos-package-check/GrandV back-end host.app'
+          'target/macos-package-check/GrandV back-end host.app/Contents/MacOS/GrandV back-end host' --folder "$PWD/target/packaged-smoke-assets" --ui-smoke --no-open --ui-screenshot "$PWD/ui-smoke.png"
           test -s ui-smoke.png
       - name: Package and smoke test Linux launcher
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a target/release/gta-browser-launcher --ui-smoke --no-open --ui-screenshot ui-smoke.png
           mkdir -p dist target/linux-package
-          cp target/release/gta-browser-launcher 'target/linux-package/$GrandV back-end host'
+          cp target/release/gta-browser-launcher 'target/linux-package/GrandV back-end host'
           icon_source=$(find target/release/build -path '*/out/app-icon.png' -print -quit)
           test -n "$icon_source"
           cp "$icon_source" target/linux-package/grandv.png
