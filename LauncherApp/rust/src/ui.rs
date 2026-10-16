@@ -154,13 +154,10 @@ pub struct Launcher {
     scanning: bool,
     help: bool,
     help_group: usize,
-    donate: bool,
-    donation_coin: Option<String>,
     share: bool,
     updates: bool,
     obtain_assets: bool,
     help_data: serde_json::Value,
-    wallets: serde_json::Value,
     smoke: bool,
     created: Instant,
     auto_open: bool,
@@ -195,15 +192,11 @@ impl Launcher {
             scanning: false,
             help: false,
             help_group: 0,
-            donate: false,
-            donation_coin: smoke.then(|| "solana".into()),
             share: false,
             updates: false,
             obtain_assets: false,
             help_data: serde_json::from_str(include_str!("../../troubleshooting.json"))
                 .expect("Bundled troubleshooting JSON"),
-            wallets: serde_json::from_str(include_str!("../../donations/wallets.json"))
-                .expect("Bundled wallets JSON"),
             smoke,
             created: Instant::now(),
             auto_open: !no_open && !smoke,
@@ -216,9 +209,6 @@ impl Launcher {
             }),
             console_status: String::new(),
         };
-        if let Some(wallets) = app.wallets.as_array_mut() {
-            wallets.sort_by_key(|wallet| wallet["id"].as_str() != Some("solana"));
-        }
         app.load();
         if let Some(port) = port {
             app.settings.port = port;
@@ -227,7 +217,6 @@ impl Launcher {
             && !(app.settings.cloudflare_tunnel && app.settings.mode == "external")
             && config::resolve_folder(&PathBuf::from(&app.folder)).is_ok()
         {
-            app.donate = false;
             app.start(false);
         }
         app
@@ -545,7 +534,7 @@ impl Launcher {
                 if !host.settings.public_origin.is_empty() {ui.label(format!("Public website: {}/launcher.html",host.settings.public_origin.trim_end_matches('/')));}
             }
             if let Some(host)=&self.host {ui.small(format!("Listener port: {} • Multiplayer: {}",host.port(),if host.settings.multiplayer{"enabled"}else{"disabled"}));if host.settings.multiplayer && ui.button("Copy access code").clicked(){ctx.copy_text(host.code.clone());}}
-            ui.separator();ui.horizontal_wrapped(|ui|{if ui.button("Need to obtain assets?").clicked(){self.obtain_assets=true;}if ui.button("Troubleshooting").clicked(){self.help=true;}if ui.button("Optional donation").clicked(){if !self.donate {self.donation_coin=self.wallets.as_array().and_then(|wallets|wallets.first()).and_then(|wallet|wallet["id"].as_str()).map(str::to_owned);}self.donate=true;}if ui.button("Updates and info").clicked(){self.updates=true;}});
+            ui.separator();ui.horizontal_wrapped(|ui|{if ui.button("Need to obtain assets?").clicked(){self.obtain_assets=true;}if ui.button("Troubleshooting").clicked(){self.help=true;}if ui.button("Updates and info").clicked(){self.updates=true;}});
         });});
         if self.obtain_assets {
             egui::Window::new("Need to obtain assets?")
@@ -640,60 +629,6 @@ impl Launcher {
                     });
                 });
             self.help = open;
-        }
-        if self.donate {
-            let mut open = self.donate;
-            egui::Window::new("Optional donation")
-                .open(&mut open)
-                .show(ctx, |ui| {
-                    ui.label("Donations are optional. The launcher does not require payment.");
-                    if let Some(wallets) = self.wallets.as_array() {
-                        for wallet in wallets {
-                            let id = wallet["id"].as_str().unwrap_or("");
-                            let selected = self.donation_coin.as_deref() == Some(id);
-                            let name = wallet["name"].as_str().unwrap_or("Wallet");
-                            let header = ui.selectable_label(selected, format!("    {name}"));
-                            let center =
-                                egui::pos2(header.rect.left() + 8., header.rect.center().y);
-                            let points = if selected {
-                                vec![
-                                    center + egui::vec2(-4., -2.),
-                                    center + egui::vec2(4., -2.),
-                                    center + egui::vec2(0., 3.),
-                                ]
-                            } else {
-                                vec![
-                                    center + egui::vec2(-2., -4.),
-                                    center + egui::vec2(-2., 4.),
-                                    center + egui::vec2(3., 0.),
-                                ]
-                            };
-                            ui.painter().add(egui::Shape::convex_polygon(
-                                points,
-                                ui.visuals().text_color(),
-                                egui::Stroke::NONE,
-                            ));
-                            if header.clicked() {
-                                self.donation_coin = if selected { None } else { Some(id.into()) };
-                            }
-                            if self.donation_coin.as_deref() == Some(id) {
-                                ui.indent(id, |ui| {
-                                    let address = wallet["address"].as_str().unwrap_or("");
-                                    ui.label(format!(
-                                        "Network: {}",
-                                        wallet["network"].as_str().unwrap_or("")
-                                    ));
-                                    ui.label(address);
-                                    Self::qr(ui, address);
-                                    if ui.button("Copy address").clicked() {
-                                        ctx.copy_text(address.into());
-                                    }
-                                });
-                            }
-                        }
-                    }
-                });
-            self.donate = open;
         }
         if self.console.open.load(Ordering::Relaxed) {
             self.show_console(ctx);
@@ -891,11 +826,8 @@ mod tests {
     fn layout_works_without_game_folder_and_contains_embedded_data() {
         let temp = tempfile::tempdir().unwrap();
         let mut app = Launcher::new(temp.path().into(), None, false, true, None);
-        assert_eq!(app.wallets.as_array().unwrap().len(), 4);
         assert!(app.help_data["web"].as_array().unwrap().len() > 3);
         app.help = true;
-        app.donate = true;
-        app.donation_coin = Some("solana".into());
         app.updates = true;
         let ctx = egui::Context::default();
         let output = ctx.run(egui::RawInput::default(), |ctx| app.layout(ctx));
@@ -904,7 +836,6 @@ mod tests {
         app.settings.mode = "external".into();
         app.settings.cloudflare_tunnel = true;
         app.help = false;
-        app.donate = false;
         app.updates = false;
         let output = ctx.run(egui::RawInput::default(), |ctx| app.layout(ctx));
         assert!(!output.shapes.is_empty());

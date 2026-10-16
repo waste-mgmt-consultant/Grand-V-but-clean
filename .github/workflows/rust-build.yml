@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main, launcher-build-2026-10-16]
-    paths: ['LauncherApp/rust/**', 'LauncherApp/troubleshooting.json', 'LauncherApp/donations/wallets.json', '.github/workflows/rust-build.yml']
+    paths: ['LauncherApp/rust/**', 'LauncherApp/troubleshooting.json', '.github/workflows/rust-build.yml']
 permissions:
   contents: read
 jobs:

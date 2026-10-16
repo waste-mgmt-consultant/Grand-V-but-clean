@@ -82,15 +82,6 @@ We do not supply, distribute, or host any game data, mirror files, or proprietar
 
 Grand Theft Auto V and all related trademarks, assets, and intellectual property are the property of their respective owners. This project is not affiliated with, endorsed by, or connected to Rockstar Games or Take-Two Interactive in any way.
 
-## Support the Project
-
-If you would like to support continued development, you can donate via the links below:
-
-- SOL: **2QGxB8mYXUKunA338wZBfK4c1ZFiW7BMwkELMUScu8PB**
-- BTC: **bc1qnqfnr93zvtujvvkmqpalvzqm64v32m38ug43sn**
-
-Thank you for your support.
-
 ## Community
 
 Created and maintained by SebasKitten.
