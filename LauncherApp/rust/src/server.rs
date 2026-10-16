@@ -860,6 +860,11 @@ async fn route(
     }
     let decoded = percent_encoding::percent_decode_str(&path).decode_utf8()?;
     let rel = decoded.trim_start_matches('/');
+    // Lowercase because exFAT/APFS asset folders resolve paths case-insensitively.
+    let lower = rel.to_ascii_lowercase();
+    if lower == "donations.js" || lower == "donations.css" || lower.starts_with("donations/") {
+        return Ok(failure(StatusCode::NOT_FOUND, "Not found"));
+    }
     let mut file_path = if rel.is_empty() {
         state.root.clone()
     } else {
@@ -880,6 +885,20 @@ async fn route(
     }
     if !file_path.is_file() {
         return Ok(failure(StatusCode::NOT_FOUND, "Not found"));
+    }
+    if file_path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("html"))
+    {
+        let html = strip_coin_ui(&tokio::fs::read_to_string(&file_path).await?);
+        let length = html.len();
+        let mut r = response(
+            StatusCode::OK,
+            if head { String::new() } else { html },
+            "text/html",
+        );
+        r.headers_mut().insert("Content-Length", length.into());
+        return Ok(r);
     }
     let mut file = tokio::fs::File::open(&file_path).await?;
     let size = file.metadata().await?.len();
@@ -945,4 +964,53 @@ pub fn parse_range(value: &str, size: u64) -> Option<(u64, u64)> {
         b.parse::<u64>().ok()?.min(size - 1)
     };
     (start < size && end >= start).then(|| (start, end - start + 1))
+}
+/// Removes the asset torrent's donation, tweet and pump.fun UI and the `$GrandV` ticker.
+fn strip_coin_ui(html: &str) -> String {
+    let mut html = html.replace("$GrandV", "GrandV");
+    for (start, end) in [
+        ("<link rel=\"stylesheet\" href=\"donations.css", ">"),
+        ("<div class=\"masthead-actions\">", "</div>"),
+        ("<dialog id=\"donate-dialog\"", "</dialog>"),
+        ("<script src=\"donations.js", "</script>"),
+    ] {
+        if let Some(i) = html.find(start)
+            && let Some(j) = html[i..].find(end)
+        {
+            html.replace_range(i..i + j + end.len(), "");
+        }
+    }
+    html
+}
+#[cfg(test)]
+mod coin_ui_tests {
+    #[test]
+    fn strips_donation_markup_and_ticker() {
+        let page = r#"<title>$GrandV — Local Launcher</title>
+<link rel="stylesheet" href="donations.css?v=1">
+<img alt="$GrandV" class="logo"><h1>Launch GTA V.</h1>
+<div class="masthead-actions">
+<button class="donate-trigger" id="donate-open">Donate to $GrandV</button>
+<a href="https://pump.fun/coin/x">Trade $GrandV</a>
+</div>
+<dialog id="donate-dialog"><div><h2>Donate</h2></div><input value="wallet"></dialog>
+<dialog id="cache-dialog">keep</dialog>
+<script src="donations.js?v=3"></script>
+<script src="launcher.js"></script>"#;
+        let clean = super::strip_coin_ui(page);
+        for gone in ["donat", "pump.fun", "$GrandV", "wallet", "masthead-actions"] {
+            assert!(
+                !clean.to_lowercase().contains(gone),
+                "{gone} left in {clean}"
+            );
+        }
+        for kept in [
+            "<title>GrandV — Local Launcher</title>",
+            "<h1>Launch GTA V.</h1>",
+            "<dialog id=\"cache-dialog\">keep</dialog>",
+            "<script src=\"launcher.js\"></script>",
+        ] {
+            assert!(clean.contains(kept), "{kept} missing from {clean}");
+        }
+    }
 }
