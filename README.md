@@ -1,8 +1,14 @@
-# Grand-V
+# Grand-V, but clean
 
-**Launcher source:** [Rust source and build instructions](LauncherApp/rust/README.md). The launcher source is separate from the game assets.
+No memecoin shit. Just the game.
 
-**[Download GrandV launchers from GitHub Releases](https://github.com/SebasKitten/Grand-V/releases)**
+A fork of [SebasKitten/Grand-V](https://github.com/SebasKitten/Grand-V) without the coin and donation parts:
+
+- The launcher has no donation window and no wallet list.
+- The app name has no `$` ticker.
+- The launcher removes the Donate, Tweet and Trade `$GrandV` buttons and the donation dialog from the web UI when it serves the pages. The game asset files stay unchanged.
+
+There are no prebuilt downloads. Build the launcher from source: [build instructions](LauncherApp/rust/README.md#build-and-test). The launcher source is separate from the game assets.
 
 GTA V in the browser
 
@@ -12,8 +18,6 @@ GTA V in the browser
 
 Grand-V is a browser-based port of GTA V built on a reverse-engineered RAGE engine, converted to WebAssembly memory64 with shared-memory workers and WebGPU. The project builds on [rea](https://github.com/morluto/rea).
 
-A major re-release is planned for Friday, 16 October.
-
 ## Features
 
 - Web launcher with Story and Sandbox modes
@@ -21,18 +25,6 @@ A major re-release is planned for Friday, 16 October.
 - Graphics settings and controller / touch controls
 - Experimental multiplayer support
 - Frame rate limits: 24, 30, and 60 FPS and experimental 120 FPS.
-
-**ALL NEW WEB UI FOR USERFRIENDLINESS**
-
-<img width="765" height="700" alt="Screenshot_20261016_182847" src="https://github.com/user-attachments/assets/22dad1b3-f9a9-4c44-97cf-0de24a4e6e71" />
-
-
-
-
-**USER FRIENDLY BACK END LAUNCHER TO HOST EVERYTHING OFFLINE FOR YOU TO USE!**
-
-<img width="808" height="777" alt="image" src="https://github.com/user-attachments/assets/9ae46729-0a8c-4aa8-8cd4-cfb37951e45d" />
-
 
 ## System Requirements
 
