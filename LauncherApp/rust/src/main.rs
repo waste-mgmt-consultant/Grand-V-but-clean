@@ -85,6 +85,8 @@ fn main() -> anyhow::Result<()> {
         gta_browser_launcher::APP_NAME,
         options,
         Box::new(move |cc| {
+            // The custom style below is dark-only; a light system theme would otherwise replace it.
+            cc.egui_ctx.set_theme(eframe::egui::Theme::Dark);
             let mut style = (*cc.egui_ctx.style()).clone();
             style.text_styles.insert(
                 eframe::egui::TextStyle::Heading,
