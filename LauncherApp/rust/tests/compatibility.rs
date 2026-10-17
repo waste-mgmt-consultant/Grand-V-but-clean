@@ -141,6 +141,36 @@ fn connection_limit_settings() {
 }
 
 #[test]
+fn bind_address_settings() {
+    use std::net::Ipv4Addr;
+    let mut settings: Settings = serde_json::from_str("{}").unwrap();
+    assert_eq!(settings.bind_ip(), Ipv4Addr::LOCALHOST);
+    settings.mode = "external".into();
+    settings.public_origin = "https://example.com".into();
+    assert_eq!(settings.bind_ip(), Ipv4Addr::LOCALHOST);
+    settings.bind = Some(Ipv4Addr::UNSPECIFIED);
+    assert_eq!(settings.bind_ip(), Ipv4Addr::UNSPECIFIED);
+    settings.validate().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    settings.save(temp.path()).unwrap();
+    assert_eq!(
+        Settings::load(temp.path()).unwrap().bind,
+        Some(Ipv4Addr::UNSPECIFIED)
+    );
+    settings.cloudflare_tunnel = true;
+    assert_eq!(settings.bind_ip(), Ipv4Addr::LOCALHOST);
+    settings.cloudflare_tunnel = false;
+    settings.mode = "lan".into();
+    settings.bind = Some(Ipv4Addr::LOCALHOST);
+    assert_eq!(settings.bind_ip(), Ipv4Addr::LOCALHOST);
+    settings.bind = Some(Ipv4Addr::new(192, 168, 1, 5));
+    assert!(settings.validate().is_err());
+    let parsed: Settings = serde_json::from_str(r#"{"bind":"0.0.0.0"}"#).unwrap();
+    assert_eq!(parsed.bind, Some(Ipv4Addr::UNSPECIFIED));
+    assert!(serde_json::from_str::<Settings>(r#"{"bind":"all"}"#).is_err());
+}
+
+#[test]
 fn validation_and_existing_formats() {
     assert!(config::access_code("  GTA5  ").unwrap() == "GTA5");
     assert!(config::access_code("a\nbc").is_err());

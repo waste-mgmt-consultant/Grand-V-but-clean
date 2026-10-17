@@ -18,7 +18,7 @@ Stop or closing the window cancels this launcher's listener, discovery socket an
 
 LAN hosting creates a private CA and server certificate when needed. Share only `lan-root-ca.cer`; clients install trust manually. Existing Python RSA roots are preserved, including their original DER fingerprint and private key. Explicit certificate renewal refreshes the server leaf while retaining the root. A supplied certificate/key pair is validated and used without automatic renewal. No system trust changes are made.
 
-Public hosting supports an automatic Cloudflare Quick Tunnel or a manually configured trusted HTTPS origin. With a reverse proxy and direct HTTPS disabled, the internal listener remains on loopback. Router, firewall and reverse proxy configuration for manual hosting remain external.
+Public hosting supports an automatic Cloudflare Quick Tunnel or a manually configured trusted HTTPS origin. With a reverse proxy and direct HTTPS disabled, the internal listener remains on loopback. If the proxy runs on another machine, or the launcher runs in a container, start it with `--bind 0.0.0.0` or set `"bind": "0.0.0.0"` in `launcher-settings.json` (`127.0.0.1` forces loopback). The GUI has the same choice under **Advanced server settings → Listen on**; **Automatic** follows the audience. Cloudflare tunnel mode always listens on loopback. This listens on every network interface over plain HTTP, so allow only the proxy through the firewall. Router, firewall and reverse proxy configuration for manual hosting remain external.
 
 ## Hosting for friends with free HTTPS
 
@@ -88,7 +88,7 @@ Headless hosting is also supported:
 gta-browser-launcher --headless --folder PATH_TO_PLAYGTA5_OFFLINE --no-open
 ```
 
-It loads the folder's existing settings. `--port` overrides the remembered port. Ctrl+C stops the owned host. A normal GUI launch accepts `--folder`, `--port` and `--no-open` too.
+It loads the folder's existing settings. `--port` and `--bind` override the remembered port and listen address. Ctrl+C stops the owned host. A normal GUI launch accepts `--folder`, `--port`, `--bind` and `--no-open` too.
 
 `../../.github/workflows/rust-build.yml` builds Windows x64, macOS ARM64/Intel, and Linux x64, alongside the existing Python workflow. The workflow runs from `LauncherApp/rust` within the Grand-V repository. Keep `troubleshooting.json` beside `rust`; it is embedded at compile time. Do not upload game assets, saves, generated certificates, access codes, private keys or `target`/`dist` directories.
 

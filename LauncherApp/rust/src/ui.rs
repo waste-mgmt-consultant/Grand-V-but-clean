@@ -170,6 +170,7 @@ impl Launcher {
     pub fn new(
         folder: PathBuf,
         port: Option<u16>,
+        bind: Option<std::net::Ipv4Addr>,
         smoke: bool,
         no_open: bool,
         screenshot: Option<PathBuf>,
@@ -212,6 +213,9 @@ impl Launcher {
         app.load();
         if let Some(port) = port {
             app.settings.port = port;
+        }
+        if bind.is_some() {
+            app.settings.bind = bind;
         }
         if smoke
             && !(app.settings.cloudflare_tunnel && app.settings.mode == "external")
@@ -488,6 +492,9 @@ impl Launcher {
                 ui.collapsing("Advanced server settings",|ui| {
                     ui.horizontal(|ui|{ui.label("Game port");ui.add(egui::DragValue::new(&mut self.settings.port).range(1024..=65535));ui.label("Maximum clients (0 = unlimited)");ui.add(egui::DragValue::new(&mut self.settings.max_clients).range(0..=10000));});
                     let through_tunnel = self.settings.cloudflare_tunnel && self.settings.mode=="external";
+                    let (automatic,local,all)=("Automatic (from audience)","This computer only (127.0.0.1)","All networks (0.0.0.0)");
+                    ui.add_enabled_ui(!through_tunnel,|ui|{egui::ComboBox::from_label("Listen on").selected_text(match self.settings.bind {None=>automatic,Some(ip) if ip.is_unspecified()=>all,Some(_)=>local}).show_ui(ui,|ui|{ui.selectable_value(&mut self.settings.bind,None,automatic);ui.selectable_value(&mut self.settings.bind,Some(std::net::Ipv4Addr::LOCALHOST),local);ui.selectable_value(&mut self.settings.bind,Some(std::net::Ipv4Addr::UNSPECIFIED),all);});});
+                    ui.small(if through_tunnel {"Cloudflare tunnel mode always listens on this computer only."} else {"All networks lets a reverse proxy on another machine, or a container port, reach this server over plain HTTP. Allow only the proxy through the firewall."});
                     ui.horizontal(|ui| {
                         ui.label("Maximum concurrent connections / streams (0 = unlimited)");
                         if through_tunnel {
@@ -825,7 +832,7 @@ mod tests {
     #[test]
     fn layout_works_without_game_folder_and_contains_embedded_data() {
         let temp = tempfile::tempdir().unwrap();
-        let mut app = Launcher::new(temp.path().into(), None, false, true, None);
+        let mut app = Launcher::new(temp.path().into(), None, None, false, true, None);
         assert!(app.help_data["web"].as_array().unwrap().len() > 3);
         app.help = true;
         app.updates = true;
@@ -852,7 +859,7 @@ mod tests {
             .local_addr()
             .unwrap()
             .port();
-        let mut app = Launcher::new(temp.path().into(), Some(port), false, true, None);
+        let mut app = Launcher::new(temp.path().into(), Some(port), None, false, true, None);
         app.settings.multiplayer = true;
         app.code = "GUI-code".into();
         let wait = |app: &mut Launcher| {

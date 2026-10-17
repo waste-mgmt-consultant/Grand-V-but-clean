@@ -13,6 +13,9 @@ struct Args {
     headless: bool,
     #[arg(long)]
     port: Option<u16>,
+    /// Listen on 127.0.0.1 or 0.0.0.0 instead of the audience default.
+    #[arg(long)]
+    bind: Option<std::net::Ipv4Addr>,
     #[arg(long)]
     no_open: bool,
     /// Open and automatically close a native GUI to check display initialization.
@@ -51,6 +54,9 @@ fn main() -> anyhow::Result<()> {
             let mut settings = gta_browser_launcher::config::Settings::load(&folder)?;
             if let Some(port) = args.port {
                 settings.port = port;
+            }
+            if args.bind.is_some() {
+                settings.bind = args.bind;
             }
             let code = gta_browser_launcher::config::load_code(&folder)?;
             let host = gta_browser_launcher::server::start(&folder, settings, &code).await?;
@@ -131,6 +137,7 @@ fn main() -> anyhow::Result<()> {
             Ok(Box::new(ui::Launcher::new(
                 folder,
                 args.port,
+                args.bind,
                 args.ui_smoke,
                 args.no_open,
                 args.ui_screenshot,

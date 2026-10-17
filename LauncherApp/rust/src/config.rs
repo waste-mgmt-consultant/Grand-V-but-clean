@@ -21,6 +21,9 @@ pub struct Settings {
     pub public_origin: String,
     pub cloudflare_tunnel: bool,
     pub multiplayer: bool,
+    /// Listen address chosen by the host; None keeps the audience default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bind: Option<Ipv4Addr>,
     // Preserve settings written by newer launchers.
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
@@ -40,6 +43,7 @@ impl Default for Settings {
             public_origin: String::new(),
             cloudflare_tunnel: false,
             multiplayer: false,
+            bind: None,
             extra: Default::default(),
         }
     }
@@ -73,6 +77,12 @@ impl Settings {
         if !["device", "lan", "external"].contains(&self.mode.as_str()) {
             bail!("Invalid audience");
         }
+        if self
+            .bind
+            .is_some_and(|ip| ip != Ipv4Addr::LOCALHOST && !ip.is_unspecified())
+        {
+            bail!("Bind address must be 127.0.0.1 or 0.0.0.0");
+        }
         if self.max_clients > 10000 || !self.speed_mib.is_finite() || self.speed_mib < 0. {
             bail!("Invalid client/bandwidth limit");
         }
@@ -92,7 +102,12 @@ impl Settings {
         Ok(())
     }
     pub fn bind_ip(&self) -> Ipv4Addr {
-        if self.mode == "device" || (self.mode == "external" && !self.https) {
+        // The launcher-owned tunnel reaches the backend over loopback; keep its plain HTTP off the network.
+        if self.cloudflare_tunnel && self.mode == "external" {
+            Ipv4Addr::LOCALHOST
+        } else if let Some(ip) = self.bind {
+            ip
+        } else if self.mode == "device" || (self.mode == "external" && !self.https) {
             Ipv4Addr::LOCALHOST
         } else {
             Ipv4Addr::UNSPECIFIED
