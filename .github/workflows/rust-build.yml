@@ -44,18 +44,13 @@ jobs:
         run: cargo test --locked --all-targets -- --test-threads=1
       - name: Build native launcher
         run: cargo build --locked --release
-      - name: Smoke test native Windows GUI
+      # No GUI smoke test here: GitHub's Windows runners have only OpenGL 1.1, and egui_glow needs 2.0+.
+      - name: Stage Windows executable
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item target/release/gta-browser-launcher.exe 'dist/GrandV back-end host.exe'
-          $smokePath = Join-Path (Get-Location).Path 'ui-smoke.png'
-          $process = Start-Process -FilePath '.\target\release\gta-browser-launcher.exe' -WorkingDirectory (Get-Location).Path -ArgumentList '--ui-smoke', '--no-open', '--ui-screenshot', ('"' + $smokePath + '"') -WindowStyle Hidden -PassThru -Wait -RedirectStandardError 'ui-smoke-stderr.txt' -RedirectStandardOutput 'ui-smoke-stdout.txt'
-          if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $smokePath)) {
-            Get-Content ui-smoke-stderr.txt, ui-smoke-stdout.txt -ErrorAction SilentlyContinue
-            throw "Native GUI smoke test failed (exit=$($process.ExitCode), screenshot=$smokePath)"
-          }
       - name: Package and smoke test macOS app
         if: runner.os == 'macOS'
         run: |
