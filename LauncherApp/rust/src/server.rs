@@ -886,6 +886,19 @@ async fn route(
     if !file_path.is_file() {
         return Ok(failure(StatusCode::NOT_FOUND, "Not found"));
     }
+    // Local patches live outside the torrent's files, so the asset size check and seeding stay intact.
+    // An override older than its asset was made for a previous asset version, so the asset wins.
+    let overrides = state.folder.join("overrides");
+    if overrides.is_dir() {
+        let relative = file_path.strip_prefix(state.root.canonicalize()?)?;
+        let patched =
+            storage::safe_target(&overrides, &relative.to_string_lossy().replace('\\', "/"))?;
+        if patched.is_file()
+            && patched.metadata()?.modified()? >= file_path.metadata()?.modified()?
+        {
+            file_path = patched;
+        }
+    }
     if file_path
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("html"))
