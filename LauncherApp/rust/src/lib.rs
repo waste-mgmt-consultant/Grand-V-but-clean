@@ -1,6 +1,7 @@
 pub mod config;
 pub mod diagnostics;
 pub mod discovery;
+pub mod patches;
 pub mod relay;
 pub mod server;
 pub mod storage;

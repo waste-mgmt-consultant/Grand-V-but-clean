@@ -2,6 +2,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use futures_util::{SinkExt, StreamExt};
 use gta_browser_launcher::{
     config::{self, Settings},
+    patches,
     server::{self, Running},
     storage, tls,
 };
@@ -289,6 +290,104 @@ async fn ranges_batch_gzip_and_headers() {
         "Fixture log\n"
     );
     host.stop().await;
+}
+const HEAP_CHECK: &[u8] =
+    b"\x03\x0f\x7e\x03\x7f\x01\x7b\x02\x40\x20\x00\x28\x02\xfc\x03\x22\x10\x41\x1f\x4d";
+fn heap_wasm() -> Vec<u8> {
+    [&b"head"[..], HEAP_CHECK, b"tail"].concat()
+}
+#[test]
+fn memory_limit_changes_only_the_heap_count() {
+    let mut wasm = heap_wasm();
+    patches::limit_heaps(&mut wasm, 6).unwrap();
+    let changed: Vec<_> = (0..wasm.len())
+        .filter(|&i| wasm[i] != heap_wasm()[i])
+        .collect();
+    assert_eq!(changed, [4 + 18]);
+    assert_eq!(wasm[4 + 18], 5);
+    for mut unknown in [
+        b"no check here".to_vec(),
+        [heap_wasm(), heap_wasm()].concat(),
+    ] {
+        let before = unknown.clone();
+        assert!(patches::limit_heaps(&mut unknown, 6).is_err());
+        assert_eq!(unknown, before);
+    }
+    assert!(patches::limit_heaps(&mut heap_wasm(), 0).is_err());
+    assert!(patches::limit_heaps(&mut heap_wasm(), 32).is_err());
+    let mut s = Settings::default();
+    assert!(s.memory_limit && s.memory_limit_heaps == 6);
+    s.memory_limit_heaps = 32;
+    assert!(s.validate().is_err());
+}
+#[tokio::test]
+async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
+    let temp = fixture();
+    let build = temp.path().join("mirror/playgta5.com/b/x");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(build.join("game.wasm"), heap_wasm()).unwrap();
+    std::fs::write(build.join("game.other.wasm"), b"unknown build").unwrap();
+    let fixed = temp.path().join("patched/b/x/game.wasm");
+    let c = client();
+    for (enabled, heaps, expected) in [(true, 6, 5), (true, 8, 7), (false, 6, 0x1f)] {
+        let mut s = settings();
+        s.memory_limit = enabled;
+        s.memory_limit_heaps = heaps;
+        let host = start(temp.path(), s, "").await;
+        let url = base(&host);
+        let body = c
+            .get(format!("{url}/b/x/game.wasm"))
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap();
+        let mut want = heap_wasm();
+        want[4 + 18] = expected;
+        assert_eq!(body, want);
+        let r = c
+            .get(format!("{url}/b/x/game.wasm"))
+            .header("Range", "bytes=22-23")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 206);
+        assert_eq!(r.bytes().await.unwrap(), [expected, 0x4d][..]);
+        let other = c
+            .get(format!("{url}/b/x/game.other.wasm"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(other.bytes().await.unwrap(), "unknown build");
+        assert_eq!(std::fs::read(build.join("game.wasm")).unwrap(), heap_wasm());
+        assert_eq!(fixed.is_file(), enabled);
+        let status = patches::status().join("\n");
+        if enabled {
+            assert!(
+                status.contains("Memory limit applied to game.wasm"),
+                "{status}"
+            );
+            assert!(
+                status.contains("Memory limit not applied to game.other.wasm"),
+                "{status}"
+            );
+            assert!(!temp.path().join("patched/b/x/game.other.wasm").exists());
+        } else {
+            assert!(status.is_empty(), "{status}");
+        }
+        host.stop().await;
+    }
+    // A restart with the same asset and settings reuses the fixed copy.
+    let mut built = None;
+    for _ in 0..2 {
+        let host = start(temp.path(), settings(), "").await;
+        let url = base(&host);
+        c.get(format!("{url}/b/x/game.wasm")).send().await.unwrap();
+        let modified = std::fs::metadata(&fixed).unwrap().modified().unwrap();
+        assert_eq!(*built.get_or_insert(modified), modified);
+        host.stop().await;
+    }
 }
 #[tokio::test]
 async fn save_restore_delete_rewrite_and_limits() {

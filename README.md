@@ -31,6 +31,12 @@ Grand-V is a browser-based port of GTA V built on a reverse-engineered RAGE engi
 
 <p align="center"><img src="launcher-web.png" alt="Web launcher" width="480"> <img src="launcher-native.png" alt="Desktop launcher" width="400"></p>
 
+## Game fixes
+
+The launcher fixes known game bugs while it serves the game. The asset files stay unchanged: the launcher keeps fixed copies in `GrandV-assets/patched/` and rebuilds them when an asset or a setting changes. If a game file does not match the known version, the launcher serves it unchanged and says so under the server status and in **Console output**. Change the fixes under **Game fixes** before you start the server.
+
+- **Streaming memory limit** (on by default): caps the memory the game uses for streamed world data at 6 × 256 MB (1.5 GB). Without a cap this memory keeps growing until the game stops with an "Invalid fixup" error. A lower limit uses less memory but can cause short pauses. In `launcher-settings.json`, set `"memory_limit": false` to turn it off or `"memory_limit_heaps"` (1–31) to change it.
+
 ## Cash hotkey (optional)
 
 `cash_hotkey.py` adds a Story mode cash hotkey. Each press of the key right of 0 adds $999,999 to the current character. It needs Python 3 and the launcher from this repo.

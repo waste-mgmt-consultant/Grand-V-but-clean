@@ -314,6 +314,7 @@ pub async fn start_with_options(
         requested_code.to_string()
     };
     settings.save(&folder)?;
+    crate::patches::forget();
     let stop = CancellationToken::new();
     let (rebind_tx, mut rebind_rx) = mpsc::channel::<Rebind>(1);
     let mut allowed_hosts = vec!["localhost".into(), "127.0.0.1".into()];
@@ -888,16 +889,25 @@ async fn route(
     }
     // Local patches live outside the torrent's files, so the asset size check and seeding stay intact.
     // An override older than its asset was made for a previous asset version, so the asset wins.
+    let relative = file_path
+        .strip_prefix(state.root.canonicalize()?)?
+        .to_string_lossy()
+        .replace('\\', "/");
     let overrides = state.folder.join("overrides");
     if overrides.is_dir() {
-        let relative = file_path.strip_prefix(state.root.canonicalize()?)?;
-        let patched =
-            storage::safe_target(&overrides, &relative.to_string_lossy().replace('\\', "/"))?;
+        let patched = storage::safe_target(&overrides, &relative)?;
         if patched.is_file()
             && patched.metadata()?.modified()? >= file_path.metadata()?.modified()?
         {
             file_path = patched;
         }
+    }
+    if relative.ends_with(".wasm") {
+        let folder = state.folder.clone();
+        file_path = tokio::task::spawn_blocking(move || {
+            crate::patches::serve_path(&folder, &relative, file_path, &settings)
+        })
+        .await??;
     }
     if file_path
         .extension()

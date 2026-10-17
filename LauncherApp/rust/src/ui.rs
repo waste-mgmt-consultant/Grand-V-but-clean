@@ -519,6 +519,11 @@ impl Launcher {
                     if ui.button("Create / renew LAN certificate").clicked(){match config::resolve_folder(&PathBuf::from(&self.folder)){Ok(folder)=>{self.busy=true;let tx=self.tx.clone();self.runtime.as_ref().unwrap().spawn(async move {let result=tokio::task::spawn_blocking(move||tls::generate(&folder)).await.map_err(anyhow::Error::from).and_then(|v|v);let _=tx.send(Event::Certificate(result));});},Err(e)=>self.status=e.to_string()}}
                     ui.small("LAN creates a private CA automatically. Trust is installed manually on each client.");
                 });
+                ui.collapsing("Game fixes",|ui| {
+                    ui.checkbox(&mut self.settings.memory_limit,"Limit the game's streaming memory");
+                    ui.add_enabled_ui(self.settings.memory_limit,|ui|ui.horizontal(|ui|{ui.label("Limit");ui.add(egui::DragValue::new(&mut self.settings.memory_limit_heaps).range(1..=31));ui.label(format!("× 256 MB ({} GB)",f32::from(self.settings.memory_limit_heaps)/4.));}));
+                    ui.small("Prevents the \"Invalid fixup\" crash after the game loads many areas. A lower limit uses less memory but can cause short pauses. The asset files stay unchanged; the launcher keeps its fixed copy in the patched folder.");
+                });
             });
             ui.horizontal_wrapped(|ui| {
                 if ui.add_enabled(editable,egui::Button::new("Start server").fill(egui::Color32::from_rgb(28, 99, 80))).clicked(){self.start(false);}
@@ -540,6 +545,7 @@ impl Launcher {
                 } else {ui.label("Backend listens on localhost; network clients connect through the configured public website.");}
                 if !host.settings.public_origin.is_empty() {ui.label(format!("Public website: {}/launcher.html",host.settings.public_origin.trim_end_matches('/')));}
             }
+            if self.host.is_some() {for line in gta_browser_launcher::patches::status() {ui.small(line);}}
             if let Some(host)=&self.host {ui.small(format!("Listener port: {} • Multiplayer: {}",host.port(),if host.settings.multiplayer{"enabled"}else{"disabled"}));if host.settings.multiplayer && ui.button("Copy access code").clicked(){ctx.copy_text(host.code.clone());}}
             ui.separator();ui.horizontal_wrapped(|ui|{if ui.button("Need to obtain assets?").clicked(){self.obtain_assets=true;}if ui.button("Troubleshooting").clicked(){self.help=true;}if ui.button("Updates and info").clicked(){self.updates=true;}});
         });});

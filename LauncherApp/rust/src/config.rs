@@ -24,6 +24,10 @@ pub struct Settings {
     /// Listen address chosen by the host; None keeps the audience default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bind: Option<Ipv4Addr>,
+    /// Serve game code with a cap on streaming memory; see `patches::limit_heaps`.
+    pub memory_limit: bool,
+    /// Streaming memory cap in 256 MB heaps.
+    pub memory_limit_heaps: u8,
     // Preserve settings written by newer launchers.
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
@@ -44,6 +48,8 @@ impl Default for Settings {
             cloudflare_tunnel: false,
             multiplayer: false,
             bind: None,
+            memory_limit: true,
+            memory_limit_heaps: 6,
             extra: Default::default(),
         }
     }
@@ -82,6 +88,9 @@ impl Settings {
             .is_some_and(|ip| ip != Ipv4Addr::LOCALHOST && !ip.is_unspecified())
         {
             bail!("Bind address must be 127.0.0.1 or 0.0.0.0");
+        }
+        if !(1..=31).contains(&self.memory_limit_heaps) {
+            bail!("Memory limit must be 1–31 heaps");
         }
         if self.max_clients > 10000 || !self.speed_mib.is_finite() || self.speed_mib < 0. {
             bail!("Invalid client/bandwidth limit");
