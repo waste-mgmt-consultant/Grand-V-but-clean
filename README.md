@@ -33,19 +33,13 @@ Grand-V is a browser-based port of GTA V built on a reverse-engineered RAGE engi
 
 ## Game fixes
 
-The launcher fixes known game bugs while it serves the game. The asset files stay unchanged: the launcher keeps fixed copies in `GrandV-assets/patched/` and rebuilds them when an asset or a setting changes. If a game file does not match the known version, the launcher serves it unchanged and says so under the server status and in **Console output**. Change the fixes under **Game fixes** before you start the server.
+The launcher fixes known game bugs and can add a cash hotkey while it serves the game. The asset files stay unchanged: the launcher keeps fixed copies in `GrandV-assets/patched/` and rebuilds them when an asset or a setting changes. If a game file does not match the known version, the launcher serves it unchanged and says so under the server status and in **Console output**. Change the fixes under **Game fixes** before you start the server.
 
 - **Streaming memory limit** (on by default): caps the memory the game uses for streamed world data at 6 × 256 MB (1.5 GB). Without a cap this memory keeps growing until the game stops with an "Invalid fixup" error. A lower limit uses less memory but can cause short pauses. In `launcher-settings.json`, set `"memory_limit": false` to turn it off or `"memory_limit_heaps"` (1–31) to change it.
 
-## Cash hotkey (optional)
+- **Cash hotkey** (off by default): in Story mode, each press of the key right of 0 adds $999,999 to the current character. In `launcher-settings.json`, this is `"cash_hotkey"`.
 
-`cash_hotkey.py` adds a Story mode cash hotkey. Each press of the key right of 0 adds $999,999 to the current character. It needs Python 3 and the launcher from this repo.
-
-```text
-python3 cash_hotkey.py /path/to/GrandV-assets
-```
-
-The script writes patched copies of `game.html` and `game.movie.wasm` to `GrandV-assets/overrides/`. The launcher serves them in place of the asset files, so the asset files stay unchanged. Run it again after each asset update. To remove the hotkey, delete the `overrides` folder.
+If you used the old `cash_hotkey.py` script, delete the `GrandV-assets/overrides/` folder. The launcher serves the files in that folder first, so the old hotkey stays on until you delete it.
 
 ## System Requirements
 

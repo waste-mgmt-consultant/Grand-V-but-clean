@@ -902,6 +902,7 @@ async fn route(
             file_path = patched;
         }
     }
+    let cash_page = settings.cash_hotkey && relative == "game.html";
     if relative.ends_with(".wasm") {
         let folder = state.folder.clone();
         file_path = tokio::task::spawn_blocking(move || {
@@ -913,7 +914,10 @@ async fn route(
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("html"))
     {
-        let html = strip_coin_ui(&tokio::fs::read_to_string(&file_path).await?);
+        let mut html = strip_coin_ui(&tokio::fs::read_to_string(&file_path).await?);
+        if cash_page {
+            html = crate::patches::cash_page(html);
+        }
         let length = html.len();
         let mut r = response(
             StatusCode::OK,

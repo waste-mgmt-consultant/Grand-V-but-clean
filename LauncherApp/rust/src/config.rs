@@ -28,6 +28,8 @@ pub struct Settings {
     pub memory_limit: bool,
     /// Streaming memory cap in 256 MB heaps.
     pub memory_limit_heaps: u8,
+    /// Story mode cash hotkey; see `patches::add_cash_hotkey`.
+    pub cash_hotkey: bool,
     // Preserve settings written by newer launchers.
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
@@ -50,6 +52,7 @@ impl Default for Settings {
             bind: None,
             memory_limit: true,
             memory_limit_heaps: 6,
+            cash_hotkey: false,
             extra: Default::default(),
         }
     }

@@ -320,6 +320,112 @@ fn memory_limit_changes_only_the_heap_count() {
     s.memory_limit_heaps = 32;
     assert!(s.validate().is_err());
 }
+fn leb(mut n: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    loop {
+        let b = (n & 0x7f) as u8;
+        n >>= 7;
+        if n == 0 {
+            out.push(b);
+            return out;
+        }
+        out.push(b | 0x80);
+    }
+}
+fn sized(bytes: &[u8]) -> Vec<u8> {
+    [leb(bytes.len()), bytes.to_vec()].concat()
+}
+/// A game file with the functions and values the cash hotkey looks for, plus GrowHeap.
+/// `inserted` goes at the start of CStatsMgr::Update.
+fn cash_wasm(inserted: &[u8]) -> Vec<u8> {
+    // i64.const 6583436, the keyboard block.
+    let keyboard = b"\x8c\xe9\x91\x03";
+    // The five {SP0,SP1,SP2,MP0,MP1}_TOTAL_CASH hashes, the cash stat 25469204 and the constructor (function 6).
+    let cash = b"\x20\x00\x41\x9d\x86\x93\x19\x36\x02\x1c\x20\x00\x41\x82\xd3\xf5\xa5\x04\x36\x02\x18\x20\x00\x41\xfd\x88\xd4\xeb\x78\x36\x02\x14\x20\x00\x41\x8b\xd0\xb9\x88\x78\x36\x02\x10\x20\x00\x41\x86\xce\x8c\x91\x04\x36\x02\x0c\x42\x94\xc2\x92\x0c\x20\x00\x42\x1c\x7c\x20\x00\x42\x18\x7c\x20\x00\x42\x14\x7c\x20\x00\x42\x10\x7c\x20\x00\x42\x0c\x7c\x10\x06";
+    let functions: [(&str, Vec<u8>); 8] = [
+        (
+            "wasm_input_test_key",
+            [&b"\x00\x42\xff\x01\x83\x42"[..], keyboard, b"\x7c\x0b"].concat(),
+        ),
+        (
+            "CStatsMgr::Update()",
+            [
+                &b"\x01\x01\x7f"[..],
+                inserted,
+                b"\x23\x00\x42\x40\x7c\x22\x05\x24\x00\x0b",
+            ]
+            .concat(),
+        ),
+        ("StatId_char::GetStatId() const", b"\x00\x0b".to_vec()),
+        (
+            "CStatsDataMgr::IsKeyValid(StatId const&) const",
+            b"\x00\x0b".to_vec(),
+        ),
+        (
+            "CStatsMgr::IncrementStat(StatId const&, float, unsigned int)",
+            b"\x00\x0b".to_vec(),
+        ),
+        (
+            "StatId_char::StatId_char(char const*)",
+            b"\x00\x0b".to_vec(),
+        ),
+        ("__wasm_call_ctors", [&b"\x00"[..], cash, b"\x0b"].concat()),
+        ("GrowHeap", [HEAP_CHECK, b"\x0b"].concat()),
+    ];
+    // Imports: one function (index 0), a memory and a global.
+    let imports = b"\x03\x03env\x01f\x00\x00\x03env\x01m\x02\x01\x01\x02\x03env\x01g\x03\x7f\x00";
+    let mut code = leb(functions.len());
+    let mut names = leb(functions.len());
+    for (i, (name, body)) in functions.iter().enumerate() {
+        code.extend(sized(body));
+        names.extend([leb(i + 1), sized(name.as_bytes())].concat());
+    }
+    let name_section = [sized(b"name"), vec![1], sized(&names)].concat();
+    [
+        &b"\0asm\x01\0\0\0"[..],
+        &[2],
+        &sized(imports),
+        &[10],
+        &sized(&code),
+        &[0],
+        &sized(&name_section),
+    ]
+    .concat()
+}
+/// What the original cash_hotkey.py inserts into `cash_wasm`.
+const CASH_HOTKEY: &[u8] = b"\x42\xf4\xea\x91\x03\x2d\x00\x00\x04\x40\x42\xf4\xea\x91\x03\x41\x00\x3a\x00\x00\x23\x00\x42\x10\x7d\x24\x00\x23\x00\x42\x08\x7c\x42\x94\xc2\x92\x0c\x10\x03\x23\x00\x42\x08\x7c\x10\x04\x04\x40\x23\x00\x42\x08\x7c\x43\xf0\x23\x74\x49\x41\x03\x10\x05\x0b\x23\x00\x42\x10\x7c\x24\x00\x0b";
+const PAGE: &str =
+    "<script>\n\t\te.preventDefault();\n\t\tif(!pressedPhysical.has(e.code)) press(e);\n</script>";
+const PAGE_HOTKEY: &str = "Atomics.store(keys, 0xE8, 1)";
+#[test]
+fn cash_hotkey_patches_known_game_only() {
+    let fixed = patches::add_cash_hotkey(&cash_wasm(b"")).unwrap();
+    assert_eq!(fixed, cash_wasm(CASH_HOTKEY));
+    assert_eq!(patches::add_cash_hotkey(&fixed).unwrap(), fixed);
+    let mut renamed = cash_wasm(b"");
+    let at = renamed
+        .windows(10)
+        .position(|w| w == b"IsKeyValid")
+        .unwrap();
+    renamed[at..at + 10].copy_from_slice(b"IsKeyKnown");
+    for (unknown, why) in [
+        (heap_wasm(), "not a wasm file"),
+        (renamed, "CStatsDataMgr::IsKeyValid(StatId const&) const"),
+        (cash_wasm(b"")[..100].to_vec(), "section size"),
+    ] {
+        let error = format!("{:#}", patches::add_cash_hotkey(&unknown).unwrap_err());
+        assert_eq!(
+            error,
+            format!("game file differs from the known version: {why}")
+        );
+    }
+    let page = patches::add_cash_key(PAGE).unwrap();
+    assert_eq!(page.matches(PAGE_HOTKEY).count(), 1);
+    assert!(page.find(PAGE_HOTKEY) < page.find("if(!pressedPhysical"));
+    assert_eq!(patches::add_cash_key(&page).unwrap(), page);
+    assert!(patches::add_cash_key("<script></script>").is_err());
+    assert!(!Settings::default().cash_hotkey);
+}
 #[tokio::test]
 async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
     let temp = fixture();
@@ -365,11 +471,11 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
         let status = patches::status().join("\n");
         if enabled {
             assert!(
-                status.contains("Memory limit applied to game.wasm"),
+                status.contains("game.wasm: memory limit applied"),
                 "{status}"
             );
             assert!(
-                status.contains("Memory limit not applied to game.other.wasm"),
+                status.contains("game.other.wasm: memory limit not applied"),
                 "{status}"
             );
             assert!(!temp.path().join("patched/b/x/game.other.wasm").exists());
@@ -386,8 +492,85 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
         c.get(format!("{url}/b/x/game.wasm")).send().await.unwrap();
         let modified = std::fs::metadata(&fixed).unwrap().modified().unwrap();
         assert_eq!(*built.get_or_insert(modified), modified);
+        assert_eq!(patches::status(), ["game.wasm: memory limit applied"]);
         host.stop().await;
     }
+}
+#[tokio::test]
+async fn cash_hotkey_serves_fixed_game_and_page() {
+    let temp = fixture();
+    let root = temp.path().join("mirror/playgta5.com");
+    std::fs::create_dir_all(root.join("b/x")).unwrap();
+    std::fs::write(root.join("game.html"), PAGE).unwrap();
+    std::fs::write(root.join("b/x/game.wasm"), cash_wasm(b"")).unwrap();
+    std::fs::write(root.join("b/x/game.other.wasm"), heap_wasm()).unwrap();
+    let c = client();
+    for memory_limit in [true, false] {
+        let mut s = settings();
+        s.cash_hotkey = true;
+        s.memory_limit = memory_limit;
+        let host = start(temp.path(), s, "").await;
+        let url = base(&host);
+        let get = |path: &str| {
+            let request = c.get(format!("{url}/{path}"));
+            async move { request.send().await.unwrap().bytes().await.unwrap() }
+        };
+        let mut want = cash_wasm(CASH_HOTKEY);
+        let mut other = heap_wasm();
+        if memory_limit {
+            patches::limit_heaps(&mut want, 6).unwrap();
+            patches::limit_heaps(&mut other, 6).unwrap();
+        }
+        assert_eq!(get("b/x/game.wasm").await, want);
+        assert_eq!(get("b/x/game.other.wasm").await, other);
+        let page = String::from_utf8(get("game.html").await.to_vec()).unwrap();
+        assert_eq!(page.matches(PAGE_HOTKEY).count(), 1, "{page}");
+        assert_eq!(
+            std::fs::read_to_string(root.join("game.html")).unwrap(),
+            PAGE
+        );
+        assert_eq!(
+            std::fs::read(root.join("b/x/game.wasm")).unwrap(),
+            cash_wasm(b"")
+        );
+        let status = patches::status().join("\n");
+        let (both, other) = if memory_limit {
+            (
+                "game.wasm: memory limit applied, cash hotkey applied",
+                "game.other.wasm: memory limit applied, cash hotkey not applied (game file differs",
+            )
+        } else {
+            (
+                "game.wasm: cash hotkey applied",
+                "game.other.wasm: cash hotkey not applied (game file differs",
+            )
+        };
+        for line in [both, other, "game.html: cash hotkey applied"] {
+            assert!(status.contains(line), "{status}");
+        }
+        host.stop().await;
+    }
+    let host = start(
+        temp.path(),
+        Settings {
+            memory_limit: false,
+            ..settings()
+        },
+        "",
+    )
+    .await;
+    let page = c
+        .get(format!("{}/game.html", base(&host)))
+        .send()
+        .await
+        .unwrap();
+    assert!(!page.text().await.unwrap().contains(PAGE_HOTKEY));
+    c.get(format!("{}/b/x/game.wasm", base(&host)))
+        .send()
+        .await
+        .unwrap();
+    assert!(!temp.path().join("patched/b/x/game.wasm").exists());
+    host.stop().await;
 }
 #[tokio::test]
 async fn save_restore_delete_rewrite_and_limits() {

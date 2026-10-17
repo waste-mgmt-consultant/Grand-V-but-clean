@@ -522,7 +522,10 @@ impl Launcher {
                 ui.collapsing("Game fixes",|ui| {
                     ui.checkbox(&mut self.settings.memory_limit,"Limit the game's streaming memory");
                     ui.add_enabled_ui(self.settings.memory_limit,|ui|ui.horizontal(|ui|{ui.label("Limit");ui.add(egui::DragValue::new(&mut self.settings.memory_limit_heaps).range(1..=31));ui.label(format!("× 256 MB ({} GB)",f32::from(self.settings.memory_limit_heaps)/4.));}));
-                    ui.small("Prevents the \"Invalid fixup\" crash after the game loads many areas. A lower limit uses less memory but can cause short pauses. The asset files stay unchanged; the launcher keeps its fixed copy in the patched folder.");
+                    ui.small("Prevents the \"Invalid fixup\" crash after the game loads many areas. A lower limit uses less memory but can cause short pauses.");
+                    ui.checkbox(&mut self.settings.cash_hotkey,"Cash hotkey in Story mode");
+                    ui.small("Each press of the key right of 0 adds $999,999 to the current character.");
+                    ui.small("The asset files stay unchanged; the launcher keeps its fixed copies in the patched folder.");
                 });
             });
             ui.horizontal_wrapped(|ui| {
