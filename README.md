@@ -8,7 +8,10 @@ A fork of [SebasKitten/Grand-V](https://github.com/SebasKitten/Grand-V) without 
 - The app name has no `$` ticker.
 - The launcher removes the Donate, Tweet and Trade `$GrandV` buttons and the donation dialog from the web UI when it serves the pages. The game asset files stay unchanged.
 
-There are no prebuilt downloads. Build the launcher from source: [build instructions](LauncherApp/rust/README.md#build-and-test). The launcher source is separate from the game assets.
+**[Download the launcher from Releases](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/releases)** for Windows, macOS or Linux. GitHub Actions builds it from this repo. You can also [build it yourself](LauncherApp/rust/README.md#build-and-test). The game assets are separate.
+
+- macOS: the app is not notarized. After you unzip it, run `xattr -dr com.apple.quarantine "GrandV back-end host.app"`, or allow it in System Settings → Privacy & Security.
+- Windows: SmartScreen can warn about the unsigned exe. Click More info → Run anyway.
 
 GTA V in the browser
 
@@ -25,6 +28,18 @@ Grand-V is a browser-based port of GTA V built on a reverse-engineered RAGE engi
 - Graphics settings and controller / touch controls
 - Experimental multiplayer support
 - Frame rate limits: 24, 30, and 60 FPS and experimental 120 FPS.
+
+<p align="center"><img src="launcher-web.png" alt="Web launcher" width="480"> <img src="launcher-native.png" alt="Desktop launcher" width="400"></p>
+
+## Cash hotkey (optional)
+
+`cash_hotkey.py` adds a Story mode cash hotkey. Each press of the key right of 0 adds $999,999 to the current character. It needs Python 3 and the launcher from this repo.
+
+```text
+python3 cash_hotkey.py /path/to/GrandV-assets
+```
+
+The script writes patched copies of `game.html` and `game.movie.wasm` to `GrandV-assets/overrides/`. The launcher serves them in place of the asset files, so the asset files stay unchanged. Run it again after each asset update. To remove the hotkey, delete the `overrides` folder.
 
 ## System Requirements
 
@@ -64,7 +79,7 @@ Active work is ongoing in the following areas:
 - Streaming
 - Compatibility
 
-Please [report issues](https://github.com/SebasKitten/Grand-V/issues) with your device model, OS/browser versions, the type of bug, and steps to reproduce it.
+Please [report game issues](https://github.com/SebasKitten/Grand-V/issues) upstream with your device model, OS/browser versions, the type of bug, and steps to reproduce it. Report problems with this fork's launcher packages, coin removal or cash hotkey [here](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/issues).
 
 ## Disclaimer & Copyright
 
