@@ -2,7 +2,7 @@
 
 No memecoin shit. Just the game.
 
-A fork of [SebasKitten/Grand-V](https://github.com/SebasKitten/Grand-V) without the coin and donation parts:
+A fork of [SebasKitten/Grand-V](https://gitlab.com/SebasKitten/Grand-V) without the coin and donation parts:
 
 - The launcher has no donation window and no wallet list.
 - The app name has no `$` ticker.
@@ -45,7 +45,7 @@ Grand-V is a browser-based port of GTA V built on a reverse-engineered RAGE engi
 
 The launcher fixes known game bugs and can add a cash hotkey while it serves the game. The asset files stay unchanged: the launcher keeps fixed copies in `GrandV-assets/patched/` and rebuilds them when an asset or a setting changes. If a game file does not match the known version, the launcher serves it unchanged and says so under the server status and in **Console output**. Change the fixes under **Game fixes** before you start the server.
 
-- **Streaming memory limit** (on by default): caps the memory the game uses for streamed world data at 6 × 256 MB (1.5 GB). Without a cap this memory keeps growing until the game stops with an "Invalid fixup" error. A lower limit uses less memory but can cause short pauses. In `launcher-settings.json`, set `"memory_limit": false` to turn it off or `"memory_limit_heaps"` (1–31) to change it.
+- **Streaming memory limit** (on by default): caps the memory the game uses for streamed world data at 6 × 256 MB (1.5 GB). Without a cap this memory keeps growing until the game stops with an "Invalid fixup" error. The launcher also has the game read its large map archives (the hills' grass and plants) in pieces, so the world keeps loading when this memory is full. A lower limit uses less memory but can cause short pauses. In `launcher-settings.json`, set `"memory_limit": false` to turn it off or `"memory_limit_heaps"` (1–31) to change it.
 
 - **Cash hotkey** (off by default): in Story mode, each press of the key right of 0 adds $999,999 to the current character. In `launcher-settings.json`, this is `"cash_hotkey"`.
 
@@ -107,7 +107,7 @@ Active work is ongoing in the following areas:
 
 ## Reporting issues
 
-Report game bugs [upstream](https://github.com/SebasKitten/Grand-V/issues) with your device model, OS/browser versions, the type of bug, and steps to reproduce it.
+Report game bugs [upstream](https://gitlab.com/SebasKitten/Grand-V/-/issues) with your device model, OS/browser versions, the type of bug, and steps to reproduce it.
 
 Report problems with this fork [here](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/issues): the launcher downloads, the coin removal, the game fixes and the game file check.
 
