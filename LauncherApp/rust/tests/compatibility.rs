@@ -8,7 +8,7 @@ use gta_browser_launcher::{
 };
 use serde_json::{Value, json};
 use std::{
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 use tokio_tungstenite::{
@@ -38,7 +38,14 @@ fn settings() -> Settings {
         ..Default::default()
     }
 }
+/// `patches::status()` is process-wide and every server start clears it. A test that reads it holds
+/// `FIX_STATUS.write()` for its whole run and uses `start_unlocked`; `start` waits for that test.
+static FIX_STATUS: RwLock<()> = RwLock::new(());
 async fn start(folder: &std::path::Path, settings: Settings, code: &str) -> Running {
+    let _guard = FIX_STATUS.read().unwrap_or_else(|e| e.into_inner());
+    start_unlocked(folder, settings, code).await
+}
+async fn start_unlocked(folder: &std::path::Path, settings: Settings, code: &str) -> Running {
     server::start_with_options(
         folder,
         settings,
@@ -428,6 +435,7 @@ fn cash_hotkey_patches_known_game_only() {
 }
 #[tokio::test]
 async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
+    let _guard = FIX_STATUS.write().unwrap_or_else(|e| e.into_inner());
     let temp = fixture();
     let build = temp.path().join("mirror/playgta5.com/b/x");
     std::fs::create_dir_all(&build).unwrap();
@@ -439,7 +447,7 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
         let mut s = settings();
         s.memory_limit = enabled;
         s.memory_limit_heaps = heaps;
-        let host = start(temp.path(), s, "").await;
+        let host = start_unlocked(temp.path(), s, "").await;
         let url = base(&host);
         let body = c
             .get(format!("{url}/b/x/game.wasm"))
@@ -487,7 +495,7 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
     // A restart with the same asset and settings reuses the fixed copy.
     let mut built = None;
     for _ in 0..2 {
-        let host = start(temp.path(), settings(), "").await;
+        let host = start_unlocked(temp.path(), settings(), "").await;
         let url = base(&host);
         c.get(format!("{url}/b/x/game.wasm")).send().await.unwrap();
         let modified = std::fs::metadata(&fixed).unwrap().modified().unwrap();
@@ -498,6 +506,7 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
 }
 #[tokio::test]
 async fn cash_hotkey_serves_fixed_game_and_page() {
+    let _guard = FIX_STATUS.write().unwrap_or_else(|e| e.into_inner());
     let temp = fixture();
     let root = temp.path().join("mirror/playgta5.com");
     std::fs::create_dir_all(root.join("b/x")).unwrap();
@@ -509,7 +518,7 @@ async fn cash_hotkey_serves_fixed_game_and_page() {
         let mut s = settings();
         s.cash_hotkey = true;
         s.memory_limit = memory_limit;
-        let host = start(temp.path(), s, "").await;
+        let host = start_unlocked(temp.path(), s, "").await;
         let url = base(&host);
         let get = |path: &str| {
             let request = c.get(format!("{url}/{path}"));
@@ -550,7 +559,7 @@ async fn cash_hotkey_serves_fixed_game_and_page() {
         }
         host.stop().await;
     }
-    let host = start(
+    let host = start_unlocked(
         temp.path(),
         Settings {
             memory_limit: false,
