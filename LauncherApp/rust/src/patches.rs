@@ -13,18 +13,43 @@ use std::{
 const HEAP_CHECK: &[u8] =
     b"\x03\x0f\x7e\x03\x7f\x01\x7b\x02\x40\x20\x00\x28\x02\xfc\x03\x22\x10\x41\x1f\x4d";
 const HEAP_LIMIT_AT: usize = 18;
+/// strStreamingLoader::LoadRequestedObjects after a failed allocation: `call SetExtraMemory; end;
+/// i32.const 1; local.set 6; ...; local.get 6; br_if 1`. The 1 means "fits the streaming budget", and
+/// the request goes on to read into chunks that were never allocated: "Read request ... is using an
+/// array of destination addresses, some of which are NULL". Only a cap makes allocations fail.
+const NO_ROOM_CHECK: &[u8] =
+    b"\x10\xfb\x4d\x0b\x41\x01\x21\x06\x0b\x20\x29\x42\xf0\x00\x7c\x24\x00\x20\x06\x0d\x01";
+const NO_ROOM_AT: usize = 5;
+/// strPackfileManager::AddImageToList builds the archive flags: `local.get 0; i32.const 256;
+/// i32.const 0; local.get 3; select; i32.const 8; ...`. Flag 256 is images.meta's loadCompletely:
+/// the archive is read into one block of its full size. The hills' grass archives need 32–64 MB
+/// blocks, which a capped heap rarely has free, so the map waits for them forever. Turning 256 into
+/// `i32.const 0` (two-byte LEB128) reads them entry by entry, like the other archives.
+const WHOLE_LOAD_CHECK: &[u8] =
+    b"\x20\x00\x41\x80\x02\x41\x00\x20\x03\x1b\x41\x08\x41\x00\x20\x01\x1b\x72";
+const WHOLE_LOAD_AT: usize = 4;
+/// Part of the patched/ stamp key; bump it when a fix changes, so old fixed copies are rebuilt.
+const FIXES_VERSION: u32 = 1;
 
 /// Caps the streaming resource heaps (256 MB each). Without a cap they keep growing and the game
-/// stops with "Invalid fixup".
+/// stops with "Invalid fixup". A file that finds no free block then waits for a later frame, the way
+/// the game already handles an allocation it gives up on, instead of stopping the game. Archives
+/// marked for whole loading are read entry by entry, so no single file needs a 32–64 MB block.
 pub fn limit_heaps(wasm: &mut [u8], heaps: u8) -> Result<()> {
     if !(1..=31).contains(&heaps) {
         bail!("Memory limit must be 1–31 heaps");
     }
-    let Some(at) = find_unique(wasm, HEAP_CHECK) else {
+    let (Some(heap), Some(no_room), Some(whole_load)) = (
+        find_unique(wasm, HEAP_CHECK),
+        find_unique(wasm, NO_ROOM_CHECK),
+        find_unique(wasm, WHOLE_LOAD_CHECK),
+    ) else {
         bail!("game file differs from the known version");
     };
     // Values up to 63 stay a one-byte signed LEB128, so the file size does not change.
-    wasm[at + HEAP_LIMIT_AT] = heaps - 1;
+    wasm[heap + HEAP_LIMIT_AT] = heaps - 1;
+    wasm[no_room + NO_ROOM_AT] = 0;
+    wasm[whole_load + WHOLE_LOAD_AT] = 0;
     Ok(())
 }
 
@@ -419,7 +444,7 @@ pub fn serve_path(
     }
     let meta = source.metadata()?;
     let key = format!(
-        "{}\n{}\n{}\nmemory_limit={} memory_limit_heaps={} cash_hotkey={}\n",
+        "{}\n{}\n{}\nfixes={FIXES_VERSION} memory_limit={} memory_limit_heaps={} cash_hotkey={}\n",
         source.display(),
         meta.len(),
         meta.modified()?.duration_since(UNIX_EPOCH)?.as_nanos(),

@@ -300,21 +300,43 @@ async fn ranges_batch_gzip_and_headers() {
 }
 const HEAP_CHECK: &[u8] =
     b"\x03\x0f\x7e\x03\x7f\x01\x7b\x02\x40\x20\x00\x28\x02\xfc\x03\x22\x10\x41\x1f\x4d";
+const NO_ROOM_CHECK: &[u8] =
+    b"\x10\xfb\x4d\x0b\x41\x01\x21\x06\x0b\x20\x29\x42\xf0\x00\x7c\x24\x00\x20\x06\x0d\x01";
+const WHOLE_LOAD_CHECK: &[u8] =
+    b"\x20\x00\x41\x80\x02\x41\x00\x20\x03\x1b\x41\x08\x41\x00\x20\x01\x1b\x72";
+/// Offsets of the heap count, the no-room flag and the whole-load flag in `heap_wasm`.
+const HEAP_AT: usize = 4 + 18;
+const NO_ROOM_AT: usize = 4 + 20 + 3 + 5;
+const WHOLE_LOAD_AT: usize = 4 + 20 + 3 + 21 + 3 + 4;
 fn heap_wasm() -> Vec<u8> {
-    [&b"head"[..], HEAP_CHECK, b"tail"].concat()
+    [
+        &b"head"[..],
+        HEAP_CHECK,
+        b"mid",
+        NO_ROOM_CHECK,
+        b"and",
+        WHOLE_LOAD_CHECK,
+        b"tail",
+    ]
+    .concat()
 }
 #[test]
-fn memory_limit_changes_only_the_heap_count() {
+fn memory_limit_changes_only_its_three_bytes() {
     let mut wasm = heap_wasm();
     patches::limit_heaps(&mut wasm, 6).unwrap();
     let changed: Vec<_> = (0..wasm.len())
         .filter(|&i| wasm[i] != heap_wasm()[i])
         .collect();
-    assert_eq!(changed, [4 + 18]);
-    assert_eq!(wasm[4 + 18], 5);
+    assert_eq!(changed, [HEAP_AT, NO_ROOM_AT, WHOLE_LOAD_AT]);
+    assert_eq!(
+        (wasm[HEAP_AT], wasm[NO_ROOM_AT], wasm[WHOLE_LOAD_AT]),
+        (5, 0, 0)
+    );
     for mut unknown in [
         b"no check here".to_vec(),
         [heap_wasm(), heap_wasm()].concat(),
+        [&b"head"[..], HEAP_CHECK].concat(),
+        [&b"head"[..], HEAP_CHECK, NO_ROOM_CHECK].concat(),
     ] {
         let before = unknown.clone();
         assert!(patches::limit_heaps(&mut unknown, 6).is_err());
@@ -342,14 +364,14 @@ fn leb(mut n: usize) -> Vec<u8> {
 fn sized(bytes: &[u8]) -> Vec<u8> {
     [leb(bytes.len()), bytes.to_vec()].concat()
 }
-/// A game file with the functions and values the cash hotkey looks for, plus GrowHeap.
+/// A game file with the functions and values the cash hotkey looks for, plus the memory limit checks.
 /// `inserted` goes at the start of CStatsMgr::Update.
 fn cash_wasm(inserted: &[u8]) -> Vec<u8> {
     // i64.const 6583436, the keyboard block.
     let keyboard = b"\x8c\xe9\x91\x03";
     // The five {SP0,SP1,SP2,MP0,MP1}_TOTAL_CASH hashes, the cash stat 25469204 and the constructor (function 6).
     let cash = b"\x20\x00\x41\x9d\x86\x93\x19\x36\x02\x1c\x20\x00\x41\x82\xd3\xf5\xa5\x04\x36\x02\x18\x20\x00\x41\xfd\x88\xd4\xeb\x78\x36\x02\x14\x20\x00\x41\x8b\xd0\xb9\x88\x78\x36\x02\x10\x20\x00\x41\x86\xce\x8c\x91\x04\x36\x02\x0c\x42\x94\xc2\x92\x0c\x20\x00\x42\x1c\x7c\x20\x00\x42\x18\x7c\x20\x00\x42\x14\x7c\x20\x00\x42\x10\x7c\x20\x00\x42\x0c\x7c\x10\x06";
-    let functions: [(&str, Vec<u8>); 8] = [
+    let functions: [(&str, Vec<u8>); 10] = [
         (
             "wasm_input_test_key",
             [&b"\x00\x42\xff\x01\x83\x42"[..], keyboard, b"\x7c\x0b"].concat(),
@@ -378,6 +400,14 @@ fn cash_wasm(inserted: &[u8]) -> Vec<u8> {
         ),
         ("__wasm_call_ctors", [&b"\x00"[..], cash, b"\x0b"].concat()),
         ("GrowHeap", [HEAP_CHECK, b"\x0b"].concat()),
+        (
+            "LoadRequestedObjects",
+            [&b"\x00"[..], NO_ROOM_CHECK, b"\x0b"].concat(),
+        ),
+        (
+            "AddImageToList",
+            [&b"\x00"[..], WHOLE_LOAD_CHECK, b"\x0b"].concat(),
+        ),
     ];
     // Imports: one function (index 0), a memory and a global.
     let imports = b"\x03\x03env\x01f\x00\x00\x03env\x01m\x02\x01\x01\x02\x03env\x01g\x03\x7f\x00";
@@ -458,7 +488,11 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
             .await
             .unwrap();
         let mut want = heap_wasm();
-        want[4 + 18] = expected;
+        want[HEAP_AT] = expected;
+        if enabled {
+            want[NO_ROOM_AT] = 0;
+            want[WHOLE_LOAD_AT] = 0;
+        }
         assert_eq!(body, want);
         let r = c
             .get(format!("{url}/b/x/game.wasm"))
