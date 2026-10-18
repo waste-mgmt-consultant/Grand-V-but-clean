@@ -2,8 +2,9 @@
 //! A torrent creates files at full size before downloading them, so the size check at start
 //! cannot see a download that never reached the disk; the game then crashes with
 //! "zstd error Data corruption detected" when it streams that area.
-use anyhow::{Result, bail};
-use std::{io, path::Path};
+use anyhow::{Context, Result, bail, ensure};
+use sha2::{Digest, Sha256};
+use std::{io, path::Path, time::UNIX_EPOCH};
 
 const MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 // Every compressed entry in the packaged archives starts 16 bytes after a 512-byte boundary
@@ -22,8 +23,8 @@ pub struct Report {
 
 pub const REPAIR_STEPS: [&str; 3] = [
     "In your torrent client, force a recheck of GrandV-assets (qBittorrent: right-click, Force recheck) and let it download to 100%.",
-    "On the game page, open More options, saves and troubleshooting, then Clear game cache. The browser keeps its own copy of the damaged data until then; saves and settings are kept.",
     "Run this check again.",
+    "Reload the game page. The browser drops its own copy of the game data when a game file changes and downloads the repaired data. If the game still crashes in the same area, open More options, saves and troubleshooting, then Clear game cache; saves and settings are kept.",
 ];
 pub const LIMITS: &str = "Covers the compressed parts of the game archives, where a damaged download crashes the game. Archives without them (mostly audio) and files outside archives are not covered; a torrent recheck covers every file.";
 
@@ -71,6 +72,37 @@ pub fn check(folder: &Path, progress: impl Fn(usize, usize)) -> Result<Report> {
     }
     progress(archives.len(), archives.len());
     Ok(report)
+}
+
+/// manifest.json with a version made from the listed game files' sizes and change times. The game keeps
+/// its own copy of the game data in the browser under that version and cannot see a repaired file of
+/// the same size; a new version makes it drop the copy. Only the version value changes: the game reads
+/// the rest of the text with its own parser.
+pub fn manifest_with_version(manifest: &str, data: &Path) -> Result<String> {
+    let parsed: serde_json::Value = serde_json::from_str(manifest)?;
+    let version = parsed["version"].as_str().context("no version")?;
+    let files = parsed["files"].as_array().context("no file list")?;
+    let mut hash = Sha256::new();
+    hash.update(manifest);
+    for path in files.iter().filter_map(|entry| entry[0].as_str()) {
+        let stamp = std::fs::metadata(data.join(path)).ok().map(|meta| {
+            let changed = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok());
+            (meta.len(), changed.map(|d| d.as_nanos()))
+        });
+        hash.update(format!("{path}\n{stamp:?}\n"));
+    }
+    // The game keeps only the version's digits, as a double; up to 15 digits stay exact.
+    let number = u64::from_be_bytes(hash.finalize()[..8].try_into()?) % 1_000_000_000_000_000;
+    let old = format!("\"version\":{}", serde_json::to_string(version)?);
+    ensure!(manifest.matches(&old).count() == 1, "version not found");
+    Ok(manifest.replacen(
+        &old,
+        &format!("\"version\":\"grandv-files-{number:015}\""),
+        1,
+    ))
 }
 
 /// Decompresses every frame; returns how many there were, or an error at the first broken one.

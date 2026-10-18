@@ -903,6 +903,33 @@ async fn route(
         }
     }
     let cash_page = settings.cash_hotkey && relative == "game.html";
+    if relative == "data/manifest.json" {
+        let manifest = tokio::fs::read_to_string(&file_path).await?;
+        let data = state.root.join("data");
+        // ponytail: stats every listed file per request (~20 ms for 5,349 files); the game asks once
+        // or twice per launch, and a repair made while the server runs is seen on the next reload.
+        let manifest = tokio::task::spawn_blocking(move || {
+            match crate::integrity::manifest_with_version(&manifest, &data) {
+                Ok(versioned) => versioned,
+                Err(e) => {
+                    crate::diagnostics::record(
+                        "Game files",
+                        format!("manifest.json served unchanged ({e:#})"),
+                    );
+                    manifest
+                }
+            }
+        })
+        .await?;
+        let length = manifest.len();
+        let mut r = response(
+            StatusCode::OK,
+            if head { String::new() } else { manifest },
+            "application/json",
+        );
+        r.headers_mut().insert("Content-Length", length.into());
+        return Ok(r);
+    }
     if relative.ends_with(".wasm") {
         let folder = state.folder.clone();
         file_path = tokio::task::spawn_blocking(move || {

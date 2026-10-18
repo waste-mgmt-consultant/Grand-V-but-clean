@@ -1026,3 +1026,54 @@ async fn discovery_nonce_protocol_and_socket_cleanup() {
             .is_ok()
     );
 }
+#[tokio::test]
+async fn manifest_version_follows_game_files() {
+    use gta_browser_launcher::integrity::manifest_with_version;
+    let temp = fixture();
+    let data = temp.path().join("mirror/playgta5.com/data");
+    let manifest = r#"{"mount":"/game/","version":"grandv-test-20261016-1","files":[["test.bin",10,123],["gone.bin",4,123]]}"#;
+    std::fs::write(data.join("manifest.json"), manifest).unwrap();
+    let version = |text: &str| {
+        serde_json::from_str::<Value>(text).unwrap()["version"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let first = manifest_with_version(manifest, &data).unwrap();
+    assert_eq!(first, manifest_with_version(manifest, &data).unwrap());
+    assert_eq!(
+        first.replace(&version(&first), "grandv-test-20261016-1"),
+        manifest
+    );
+    // A same-size repair: only the change time differs.
+    filetime::set_file_mtime(
+        data.join("test.bin"),
+        filetime::FileTime::from_unix_time(1_800_000_000, 0),
+    )
+    .unwrap();
+    let repaired = manifest_with_version(manifest, &data).unwrap();
+    assert_ne!(version(&first), version(&repaired));
+    for text in [&first, &repaired] {
+        // The game keeps the digits as a double.
+        let digits: String = version(text).chars().filter(char::is_ascii_digit).collect();
+        assert!(digits.len() <= 15 && digits.parse::<u64>().unwrap() < 1 << 53);
+    }
+    let host = start(temp.path(), settings(), "").await;
+    let c = client();
+    let url = base(&host);
+    let served = c
+        .get(format!("{url}/data/manifest.json"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(served.headers()["Content-Type"], "application/json");
+    assert_eq!(served.text().await.unwrap(), repaired);
+    let r = c
+        .get(format!("{url}/data/test.bin?v={}", version(&repaired)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.bytes().await.unwrap(), "0123456789");
+    host.stop().await;
+}

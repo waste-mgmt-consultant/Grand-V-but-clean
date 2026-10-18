@@ -58,8 +58,8 @@ A torrent client creates each file at full size before it downloads the data. So
 Click **Check game files**, then **Start check**. The check reads every game archive and makes sure that it opens. It changes nothing. It takes about a minute on a fast disk, and you can keep playing or hosting meanwhile. If it finds damage:
 
 1. In your torrent client, force a recheck of GrandV-assets (qBittorrent: right-click, **Force recheck**) and let it download to 100%.
-2. On the game page, open **More options, saves and troubleshooting**, then **Clear game cache**. The browser keeps its own copy of the damaged data until you do this. Saves and settings are kept.
-3. Run the check again.
+2. Run the check again.
+3. Reload the game page. The browser keeps its own copy of the game data. When a game file changes on disk, the launcher tells the browser, and the browser drops that copy and downloads the repaired data. If the game still crashes in the same area, open **More options, saves and troubleshooting**, then **Clear game cache**. Saves and settings are kept.
 
 The check covers the compressed parts of the game archives, where damaged data crashes the game. It does not cover archives without them (mostly audio) or files outside the archives. A torrent recheck covers every file.
 
