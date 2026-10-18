@@ -148,13 +148,10 @@ pub fn resolve_folder(path: &Path) -> Result<PathBuf> {
     }
     bail!("Select the extracted GrandV-assets folder, not the launcher folder or an archive. Expected mirror/playgta5.com/launcher.html inside it.")
 }
-/// Check release contents once, before hosting. Legacy development folders remain supported.
-pub fn validate_asset_package(folder: &Path) -> Result<()> {
-    let marker = folder.join("grandv-assets.json");
-    if !marker.is_file() {
-        return Ok(());
-    }
-    let package: serde_json::Value = serde_json::from_slice(&std::fs::read(&marker)?)?;
+/// Relative paths and sizes listed in a release package's grandv-assets.json.
+pub fn package_files(folder: &Path) -> Result<Vec<(String, u64)>> {
+    let package: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(folder.join("grandv-assets.json"))?)?;
     if package["format"] != "grandv-assets-v1" {
         bail!("Unsupported GrandV-assets package. Extract the current asset download.");
     }
@@ -164,21 +161,32 @@ pub fn validate_asset_package(folder: &Path) -> Result<()> {
     if entries.is_empty() {
         bail!("GrandV-assets file list is empty. Extract the complete package again.");
     }
-    for entry in entries {
-        let relative = entry[0]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid asset file entry"))?;
-        let expected = entry[1]
-            .as_u64()
-            .ok_or_else(|| anyhow::anyhow!("Invalid asset size"))?;
-        let path = Path::new(relative);
-        if path
-            .components()
-            .any(|part| !matches!(part, std::path::Component::Normal(_)))
-        {
-            bail!("Invalid GrandV-assets path: {relative}");
-        }
-        match std::fs::metadata(folder.join(path)) {
+    entries
+        .iter()
+        .map(|entry| {
+            let relative = entry[0]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid asset file entry"))?;
+            let expected = entry[1]
+                .as_u64()
+                .ok_or_else(|| anyhow::anyhow!("Invalid asset size"))?;
+            if Path::new(relative)
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+            {
+                bail!("Invalid GrandV-assets path: {relative}");
+            }
+            Ok((relative.to_owned(), expected))
+        })
+        .collect()
+}
+/// Check release contents once, before hosting. Legacy development folders remain supported.
+pub fn validate_asset_package(folder: &Path) -> Result<()> {
+    if !folder.join("grandv-assets.json").is_file() {
+        return Ok(());
+    }
+    for (relative, expected) in package_files(folder)? {
+        match std::fs::metadata(folder.join(&relative)) {
             Ok(meta) if meta.is_file() && meta.len() == expected => {}
             _ => bail!(
                 "GrandV-assets is incomplete: {relative} is missing or has the wrong size. Finish downloading and extract the complete folder again."

@@ -2,12 +2,13 @@ use eframe::egui;
 use gta_browser_launcher::{
     config::{self, Settings},
     discovery::{self, Found},
+    integrity,
     server::{self, Running},
     tls, tunnel,
 };
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::{
     path::PathBuf,
@@ -26,6 +27,7 @@ enum Event {
     Stopped,
     Found(anyhow::Result<Vec<Found>>),
     Certificate(anyhow::Result<(String, String)>),
+    Checked(anyhow::Result<integrity::Report>),
 }
 const ASSET_TORRENT_URL: &str = concat!(
     "magnet:?xt=urn:btih:60a2d95f23154e4f7c75a965307133c24d9c7178&dn=GrandV-assets",
@@ -157,6 +159,11 @@ pub struct Launcher {
     share: bool,
     updates: bool,
     obtain_assets: bool,
+    check_open: bool,
+    checking: bool,
+    /// Archives done and total, written by the background check.
+    check_progress: Arc<[AtomicUsize; 2]>,
+    check_result: Option<Result<integrity::Report, String>>,
     help_data: serde_json::Value,
     smoke: bool,
     created: Instant,
@@ -196,6 +203,10 @@ impl Launcher {
             share: false,
             updates: false,
             obtain_assets: false,
+            check_open: false,
+            checking: false,
+            check_progress: Arc::default(),
+            check_result: None,
             help_data: serde_json::from_str(include_str!("../../troubleshooting.json"))
                 .expect("Bundled troubleshooting JSON"),
             smoke,
@@ -299,6 +310,27 @@ impl Launcher {
             });
         }
     }
+    fn check_files(&mut self) {
+        let folder = match config::resolve_folder(&PathBuf::from(&self.folder)) {
+            Ok(folder) => folder,
+            Err(e) => {
+                self.check_result = Some(Err(e.to_string()));
+                return;
+            }
+        };
+        self.checking = true;
+        self.check_result = None;
+        let progress = self.check_progress.clone();
+        progress.iter().for_each(|value| value.store(0, Ordering::Relaxed));
+        let tx = self.tx.clone();
+        self.runtime.as_ref().unwrap().spawn_blocking(move || {
+            let result = integrity::check(&folder, |done, total| {
+                progress[0].store(done, Ordering::Relaxed);
+                progress[1].store(total, Ordering::Relaxed);
+            });
+            let _ = tx.send(Event::Checked(result));
+        });
+    }
     fn events(&mut self) {
         while let Ok(event) = self.rx.try_recv() {
             match event {
@@ -357,6 +389,20 @@ impl Launcher {
                         }
                         Err(e) => self.status = format!("Certificate generation failed: {e:#}"),
                     }
+                }
+                Event::Checked(result) => {
+                    self.checking = false;
+                    let result = result.map_err(|e| format!("Could not check: {e:#}"));
+                    let lines = match &result {
+                        Ok(report) => std::iter::once(report.summary())
+                            .chain(report.damaged.iter().map(|entry| format!("Damaged: {entry}")))
+                            .collect(),
+                        Err(e) => vec![e.clone()],
+                    };
+                    for line in lines {
+                        gta_browser_launcher::diagnostics::record("Game file check", line);
+                    }
+                    self.check_result = Some(result);
                 }
             }
         }
@@ -550,7 +596,7 @@ impl Launcher {
             }
             if self.host.is_some() {for line in gta_browser_launcher::patches::status() {ui.small(line);}}
             if let Some(host)=&self.host {ui.small(format!("Listener port: {} • Multiplayer: {}",host.port(),if host.settings.multiplayer{"enabled"}else{"disabled"}));if host.settings.multiplayer && ui.button("Copy access code").clicked(){ctx.copy_text(host.code.clone());}}
-            ui.separator();ui.horizontal_wrapped(|ui|{if ui.button("Need to obtain assets?").clicked(){self.obtain_assets=true;}if ui.button("Troubleshooting").clicked(){self.help=true;}if ui.button("Updates and info").clicked(){self.updates=true;}});
+            ui.separator();ui.horizontal_wrapped(|ui|{if ui.button("Need to obtain assets?").clicked(){self.obtain_assets=true;}if ui.button("Check game files").clicked(){self.check_open=true;}if ui.button("Troubleshooting").clicked(){self.help=true;}if ui.button("Updates and info").clicked(){self.updates=true;}});
         });});
         if self.obtain_assets {
             egui::Window::new("Need to obtain assets?")
@@ -579,6 +625,67 @@ impl Launcher {
                     ui.separator();
                     ui.label("3. Wait for 100%, then use Browse to select GrandV-assets and choose Start & open game. No extraction is needed.");
                 });
+        }
+        if self.check_open {
+            let mut open = self.check_open;
+            egui::Window::new("Check game files")
+                .open(&mut open)
+                .default_width(560.)
+                .show(ctx, |ui| {
+                    ui.label("Reads every game archive and checks that it opens. Nothing is changed. Takes about a minute on a fast disk; you can keep playing or hosting meanwhile.");
+                    if ui
+                        .add_enabled(!self.checking, egui::Button::new("Start check"))
+                        .clicked()
+                    {
+                        self.check_files();
+                    }
+                    if self.checking {
+                        let [done, total] = &*self.check_progress;
+                        let (done, total) =
+                            (done.load(Ordering::Relaxed), total.load(Ordering::Relaxed));
+                        ui.add(
+                            egui::ProgressBar::new(done as f32 / total.max(1) as f32)
+                                .text(format!("{done} / {total} archives")),
+                        );
+                    }
+                    match &self.check_result {
+                        Some(Ok(report)) if report.damaged.is_empty() => {
+                            ui.label(
+                                egui::RichText::new(report.summary())
+                                    .color(egui::Color32::from_rgb(147, 232, 184)),
+                            );
+                        }
+                        Some(Ok(report)) => {
+                            ui.label(
+                                egui::RichText::new(report.summary())
+                                    .color(egui::Color32::from_rgb(245, 203, 116)),
+                            );
+                            egui::ScrollArea::vertical()
+                                .max_height(140.)
+                                .show(ui, |ui| {
+                                    for entry in &report.damaged {
+                                        ui.add(
+                                            egui::Label::new(egui::RichText::new(entry).small().monospace())
+                                                .selectable(true),
+                                        );
+                                    }
+                                });
+                            ui.label("To repair:");
+                            for (number, step) in integrity::REPAIR_STEPS.iter().enumerate() {
+                                ui.label(format!("{}. {step}", number + 1));
+                            }
+                        }
+                        Some(Err(e)) => {
+                            ui.label(
+                                egui::RichText::new(e)
+                                    .color(egui::Color32::from_rgb(245, 203, 116)),
+                            );
+                        }
+                        None => {}
+                    }
+                    ui.small(integrity::LIMITS);
+                });
+            self.check_open = open;
         }
         if self.updates {
             let mut open = self.updates;
@@ -845,6 +952,12 @@ mod tests {
         assert!(app.help_data["web"].as_array().unwrap().len() > 3);
         app.help = true;
         app.updates = true;
+        app.check_open = true;
+        app.check_result = Some(Ok(integrity::Report {
+            archives: 2,
+            damaged: vec!["a.rpf (compressed part at byte 16: data ends early)".into()],
+            ..Default::default()
+        }));
         let ctx = egui::Context::default();
         let output = ctx.run(egui::RawInput::default(), |ctx| app.layout(ctx));
         assert!(!output.shapes.is_empty());

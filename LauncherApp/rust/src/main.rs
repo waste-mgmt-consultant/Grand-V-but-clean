@@ -18,6 +18,9 @@ struct Args {
     bind: Option<std::net::Ipv4Addr>,
     #[arg(long)]
     no_open: bool,
+    /// Check that the game archives decompress, list damaged ones, then exit (1 when damaged).
+    #[arg(long)]
+    check_assets: bool,
     /// Open and automatically close a native GUI to check display initialization.
     #[arg(long)]
     ui_smoke: bool,
@@ -28,7 +31,7 @@ fn main() -> anyhow::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let args = Args::parse();
     #[cfg(windows)]
-    if args.headless {
+    if args.headless || args.check_assets {
         // GUI launches have no console. Headless launches attach to their calling terminal for logs and Ctrl+C.
         unsafe {
             windows_sys::Win32::System::Console::AttachConsole(
@@ -47,6 +50,26 @@ fn main() -> anyhow::Result<()> {
             executable.parent().unwrap_or(&executable).to_path_buf()
         }
     });
+    if args.check_assets {
+        let folder = gta_browser_launcher::config::resolve_folder(&folder)?;
+        let report = gta_browser_launcher::integrity::check(&folder, |done, total| {
+            if done % 100 == 0 || done == total {
+                eprintln!("Checked {done} / {total} archives");
+            }
+        })?;
+        println!("{}", report.summary());
+        for entry in &report.damaged {
+            println!("Damaged: {entry}");
+        }
+        if report.damaged.is_empty() {
+            println!("{}", gta_browser_launcher::integrity::LIMITS);
+            return Ok(());
+        }
+        for (number, step) in gta_browser_launcher::integrity::REPAIR_STEPS.iter().enumerate() {
+            println!("{}. {step}", number + 1);
+        }
+        std::process::exit(1);
+    }
     if args.headless {
         let runtime = tokio::runtime::Runtime::new()?;
         return runtime.block_on(async {

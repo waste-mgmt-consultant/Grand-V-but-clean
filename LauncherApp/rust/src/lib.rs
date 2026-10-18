@@ -1,5 +1,6 @@
 pub mod config;
 pub mod diagnostics;
+pub mod integrity;
 pub mod discovery;
 pub mod patches;
 pub mod relay;
