@@ -8,12 +8,22 @@ A fork of [SebasKitten/Grand-V](https://github.com/SebasKitten/Grand-V) without 
 - The app name has no `$` ticker.
 - The launcher removes the Donate, Tweet and Trade `$GrandV` buttons and the donation dialog from the web UI when it serves the pages. The game asset files stay unchanged.
 
+The launcher also fixes known game crashes and can check the game files for damage. See [Game fixes](#game-fixes) and [Check game files](#check-game-files).
+
 **[Download the launcher from Releases](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/releases)** for Windows, macOS or Linux. GitHub Actions builds it from this repo. You can also [build it yourself](LauncherApp/rust/README.md#build-and-test). The game assets are separate.
 
 - macOS: the app is not notarized. After you unzip it, run `xattr -dr com.apple.quarantine "GrandV back-end host.app"`, or allow it in System Settings → Privacy & Security.
 - Windows: SmartScreen can warn about the unsigned exe. Click More info → Run anyway.
 
-GTA V in the browser
+## Quick start
+
+1. Put the launcher next to your `GrandV-assets` folder, or click **Browse…** in the launcher and select that folder.
+2. Under **Audience**, choose who can play: **This PC**, **LAN / school network** or **Public website**.
+3. Click **Start & open game**.
+
+The [launcher guide](LauncherApp/rust/README.md) covers LAN and public hosting, multiplayer and command-line options.
+
+## About Grand-V
 
 <p align="center"><img src="grand-logo-v2.png" alt="Grand-V logo" width="220"></p>
 
@@ -40,6 +50,20 @@ The launcher fixes known game bugs and can add a cash hotkey while it serves the
 - **Cash hotkey** (off by default): in Story mode, each press of the key right of 0 adds $999,999 to the current character. In `launcher-settings.json`, this is `"cash_hotkey"`.
 
 If you used the old `cash_hotkey.py` script, delete the `GrandV-assets/overrides/` folder. The launcher serves the files in that folder first, so the old hotkey stays on until you delete it.
+
+## Check game files
+
+A torrent client creates each file at full size before it downloads the data. So the launcher's size check at start cannot see a download that did not finish or did not reach the disk. The game then stops with "zstd error Data corruption detected", or crashes again and again in the same area.
+
+Click **Check game files**, then **Start check**. The check reads every game archive and makes sure that it opens. It changes nothing. It takes about a minute on a fast disk, and you can keep playing or hosting meanwhile. If it finds damage:
+
+1. In your torrent client, force a recheck of GrandV-assets (qBittorrent: right-click, **Force recheck**) and let it download to 100%.
+2. On the game page, open **More options, saves and troubleshooting**, then **Clear game cache**. The browser keeps its own copy of the damaged data until you do this. Saves and settings are kept.
+3. Run the check again.
+
+The check covers the compressed parts of the game archives, where damaged data crashes the game. It does not cover archives without them (mostly audio) or files outside the archives. A torrent recheck covers every file.
+
+To run the check without the window, see [Command line](LauncherApp/rust/README.md#command-line).
 
 ## System Requirements
 
@@ -69,6 +93,8 @@ The project is designed to be as simple as possible to run.
 
 Client devices only need to open the host’s URL in a compatible browser. No separate game installation is required on each client.
 
+Behind a reverse proxy on another machine, or in a container, set the listen address. See [Listen address](LauncherApp/rust/README.md#listen-address).
+
 ## Current Development Focus
 
 Active work is ongoing in the following areas:
@@ -79,7 +105,13 @@ Active work is ongoing in the following areas:
 - Streaming
 - Compatibility
 
-Please [report game issues](https://github.com/SebasKitten/Grand-V/issues) upstream with your device model, OS/browser versions, the type of bug, and steps to reproduce it. Report problems with this fork's launcher packages, coin removal or cash hotkey [here](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/issues).
+## Reporting issues
+
+Report game bugs [upstream](https://github.com/SebasKitten/Grand-V/issues) with your device model, OS/browser versions, the type of bug, and steps to reproduce it.
+
+Report problems with this fork [here](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/issues): the launcher downloads, the coin removal, the game fixes and the game file check.
+
+Not sure where a crash belongs? First run **Check game files** and repair any damage. Then try again with the **Game fixes** turned off. If the crash goes away, report it here.
 
 ## Disclaimer & Copyright
 
@@ -91,7 +123,7 @@ Grand Theft Auto V and all related trademarks, assets, and intellectual property
 
 ## Community
 
-Created and maintained by SebasKitten.
+Grand-V is created and maintained by SebasKitten. This fork is maintained separately.
 
 Join the project channels to follow progress:
 
