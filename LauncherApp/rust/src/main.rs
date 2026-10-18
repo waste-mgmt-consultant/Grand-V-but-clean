@@ -65,7 +65,10 @@ fn main() -> anyhow::Result<()> {
             println!("{}", gta_browser_launcher::integrity::LIMITS);
             return Ok(());
         }
-        for (number, step) in gta_browser_launcher::integrity::REPAIR_STEPS.iter().enumerate() {
+        for (number, step) in gta_browser_launcher::integrity::REPAIR_STEPS
+            .iter()
+            .enumerate()
+        {
             println!("{}. {step}", number + 1);
         }
         std::process::exit(1);

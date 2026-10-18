@@ -146,7 +146,9 @@ pub fn resolve_folder(path: &Path) -> Result<PathBuf> {
             return Ok(candidate.canonicalize()?);
         }
     }
-    bail!("Select the extracted GrandV-assets folder, not the launcher folder or an archive. Expected mirror/playgta5.com/launcher.html inside it.")
+    bail!(
+        "Select the extracted GrandV-assets folder, not the launcher folder or an archive. Expected mirror/playgta5.com/launcher.html inside it."
+    )
 }
 /// Relative paths and sizes listed in a release package's grandv-assets.json.
 pub fn package_files(folder: &Path) -> Result<Vec<(String, u64)>> {

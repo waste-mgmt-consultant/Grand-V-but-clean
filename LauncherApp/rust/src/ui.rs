@@ -138,7 +138,6 @@ fn open_asset_torrent() -> std::io::Result<()> {
     Ok(())
 }
 
-
 pub struct Launcher {
     runtime: Option<tokio::runtime::Runtime>,
     tx: mpsc::Sender<Event>,
@@ -321,7 +320,9 @@ impl Launcher {
         self.checking = true;
         self.check_result = None;
         let progress = self.check_progress.clone();
-        progress.iter().for_each(|value| value.store(0, Ordering::Relaxed));
+        progress
+            .iter()
+            .for_each(|value| value.store(0, Ordering::Relaxed));
         let tx = self.tx.clone();
         self.runtime.as_ref().unwrap().spawn_blocking(move || {
             let result = integrity::check(&folder, |done, total| {
@@ -395,7 +396,12 @@ impl Launcher {
                     let result = result.map_err(|e| format!("Could not check: {e:#}"));
                     let lines = match &result {
                         Ok(report) => std::iter::once(report.summary())
-                            .chain(report.damaged.iter().map(|entry| format!("Damaged: {entry}")))
+                            .chain(
+                                report
+                                    .damaged
+                                    .iter()
+                                    .map(|entry| format!("Damaged: {entry}")),
+                            )
                             .collect(),
                         Err(e) => vec![e.clone()],
                     };
