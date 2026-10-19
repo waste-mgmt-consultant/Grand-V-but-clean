@@ -43,27 +43,25 @@ Grand-V is a browser-based port of GTA V built on a reverse-engineered RAGE engi
 
 ## Game fixes
 
-The launcher fixes known game bugs and can add a cash hotkey while it serves the game. The asset files stay unchanged: the launcher keeps fixed copies in `GrandV-assets/patched/` and rebuilds them when an asset or a setting changes. If a game file does not match the known version, the launcher serves it unchanged and says so under the server status and in **Console output**. Change the fixes under **Game fixes** before you start the server.
+Set these under **Game fixes** before you start the server. Your game files stay unchanged; the launcher serves fixed copies.
 
-- **Streaming memory limit** (on by default): caps the memory the game uses for streamed world data at 6 × 256 MB (1.5 GB). Without a cap this memory keeps growing until the game stops with an "Invalid fixup" error. The launcher also has the game read its large map archives (the hills' grass and plants) in pieces, so the world keeps loading when this memory is full. A lower limit uses less memory but can cause short pauses. In `launcher-settings.json`, set `"memory_limit": false` to turn it off or `"memory_limit_heaps"` (1–31) to change it.
+- **Limit the game's streaming memory** (on by default): stops the "Invalid fixup" crash after long play. The default limit is 1.5 GB.
+- **Cash hotkey in Story mode** (off by default): each press of the key right of 0 adds $999,999.
 
-- **Cash hotkey** (off by default): in Story mode, each press of the key right of 0 adds $999,999 to the current character. In `launcher-settings.json`, this is `"cash_hotkey"`.
+Used the old `cash_hotkey.py` script? Delete the `GrandV-assets/overrides/` folder, or the old hotkey stays on.
 
-If you used the old `cash_hotkey.py` script, delete the `GrandV-assets/overrides/` folder. The launcher serves the files in that folder first, so the old hotkey stays on until you delete it.
+The same settings are in `launcher-settings.json`: `memory_limit`, `memory_limit_heaps` (1–31, × 256 MB) and `cash_hotkey`.
 
 ## Check game files
 
-A torrent client creates each file at full size before it downloads the data. So the launcher's size check at start cannot see a download that did not finish or did not reach the disk. The game then stops with "zstd error Data corruption detected", or crashes again and again in the same area.
+Use this if the game stops with "zstd error Data corruption detected" or keeps crashing in the same area. The usual cause is a torrent download that did not finish.
 
-Click **Check game files**, then **Start check**. The check reads every game archive and makes sure that it opens. It changes nothing. It takes about a minute on a fast disk, and you can keep playing or hosting meanwhile. If it finds damage:
+1. Click **Check game files**, then **Start check**. It takes about a minute on a fast disk and changes nothing.
+2. If it finds damage, force a recheck in your torrent client (qBittorrent: right-click, **Force recheck**) and let it reach 100%.
+3. Run the check again, then reload the game page.
+4. Still crashing in the same area? Open **More options, saves and troubleshooting**, then **Clear game cache**. Your saves and settings stay.
 
-1. In your torrent client, force a recheck of GrandV-assets (qBittorrent: right-click, **Force recheck**) and let it download to 100%.
-2. Run the check again.
-3. Reload the game page. The browser keeps its own copy of the game data. When a game file changes on disk, the launcher tells the browser, and the browser drops that copy and downloads the repaired data. If the game still crashes in the same area, open **More options, saves and troubleshooting**, then **Clear game cache**. Saves and settings are kept.
-
-The check covers the compressed parts of the game archives, where damaged data crashes the game. It does not cover archives without them (mostly audio) or files outside the archives. A torrent recheck covers every file.
-
-To run the check without the window, see [Command line](LauncherApp/rust/README.md#command-line).
+The check skips some archives (mostly audio) and loose files. A torrent recheck covers every file. To run the check without the window, see [Command line](LauncherApp/rust/README.md#command-line).
 
 ## System Requirements
 
