@@ -706,7 +706,10 @@ impl Launcher {
                         for (label, url) in [
                             ("Telegram", "https://t.me/reGRANDTA"),
                             ("Discord", "https://discord.gg/Td8Jdjw3Wf"),
-                            ("GitHub", "https://github.com/SebasKitten/Grand-V"),
+                            (
+                                "GitHub",
+                                "https://github.com/waste-mgmt-consultant/Grand-V-but-clean",
+                            ),
                         ] {
                             if ui
                                 .add_sized([120., 36.], egui::Button::new(label))

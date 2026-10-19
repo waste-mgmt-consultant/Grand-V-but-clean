@@ -67,7 +67,7 @@ The launcher reads and writes the same files and protocols as earlier Grand-V la
 - UDP discovery: `GTA5LAN1` on port 8014 with request nonce, private peers, fingerprint and canonical browser link.
 - Public certificate download/info, including plaintext download on the LAN HTTPS listener; other plaintext requests redirect or reject.
 - QR sharing, manual Join, offline troubleshooting.
-- **Updates and info** opens a movable small popup with **Telegram** (`https://t.me/reGRANDTA`), **Discord** (`https://discord.gg/Td8Jdjw3Wf`) and **GitHub** (`https://github.com/SebasKitten/Grand-V`) buttons. GitHub links to the backend launcher distribution repository. Each opens its link in the default browser.
+- **Updates and info** opens a movable small popup with **Telegram** (`https://t.me/reGRANDTA`), **Discord** (`https://discord.gg/Td8Jdjw3Wf`) and **GitHub** (`https://github.com/waste-mgmt-consultant/Grand-V-but-clean`) buttons. GitHub links to this fork, where its launcher releases are published. Each opens its link in the default browser.
 
 The relay runs inside the host process at `/relay`. The old `relay_port` setting stays in the settings file for compatibility but is not opened or used. Share links never contain the local launcher capability or access code.
 
