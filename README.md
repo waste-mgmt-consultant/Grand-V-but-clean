@@ -1,6 +1,6 @@
 # Grand-V, but clean
 
-**[Download the launcher](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/releases/latest)** for Windows, macOS or Linux.
+## [Download the launcher](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/releases/latest) for Windows, macOS or Linux
 
 No memecoin shit. Just the game.
 
