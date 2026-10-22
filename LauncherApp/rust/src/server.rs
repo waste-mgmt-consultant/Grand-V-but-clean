@@ -980,7 +980,7 @@ async fn route(
         r.headers_mut().insert("Content-Length", length.into());
         return Ok(r);
     }
-    if relative.ends_with(".wasm") {
+    if relative.ends_with(".wasm") || relative == crate::patches::CONTROL_SETTINGS {
         let folder = state.folder.clone();
         file_path = tokio::task::spawn_blocking(move || {
             crate::patches::serve_path(&folder, &relative, file_path, &settings)

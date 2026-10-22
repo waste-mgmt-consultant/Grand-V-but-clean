@@ -68,6 +68,37 @@ pub fn fix_memory_files(wasm: &mut [u8]) -> Result<()> {
     Ok(())
 }
 
+/// common:/data/control/settings.meta, served from `patched/` like the game files.
+pub const CONTROL_SETTINGS: &str = "data/common/data/control/settings.meta";
+/// The 2013 data has no axis for INPUT_SCALED_LOOK_LR/UD, so nothing maps them and they stay 0. With
+/// keyboard and mouse, script cameras read only these (Paparazzo's film camera does not turn). Built
+/// from the same halves as INPUT_LOOK_LR/UD, they get the mouse and pad mappings the look axes get.
+const SCALED_LOOK_AXES: &str = "<Item><Input>INPUT_SCALED_LOOK_UD</Input><Negative>INPUT_LOOK_UP_ONLY</Negative><Positive>INPUT_LOOK_DOWN_ONLY</Positive></Item><Item><Input>INPUT_SCALED_LOOK_LR</Input><Negative>INPUT_LOOK_LEFT_ONLY</Negative><Positive>INPUT_LOOK_RIGHT_ONLY</Positive></Item>";
+const AXES_END: &str = "</AxisDefinitions>";
+
+/// Adds the scaled look axes. The io worker reads only the manifest size of this file, so they take
+/// the place of trailing padding and the size stays the same.
+pub fn add_scaled_look(meta: &[u8]) -> Result<Vec<u8>> {
+    let text = std::str::from_utf8(meta)?;
+    ensure!(
+        !text.contains("INPUT_SCALED_LOOK_LR"),
+        "the file already has the scaled look axes"
+    );
+    ensure!(
+        text.matches(AXES_END).count() == 1,
+        "file differs from the known version"
+    );
+    let body = text.trim_end_matches([' ', '\t', '\r', '\n']);
+    let padding = &text[body.len()..];
+    ensure!(
+        padding.len() >= SCALED_LOOK_AXES.len(),
+        "no room in the file"
+    );
+    let fixed = body.replacen(AXES_END, &format!("{SCALED_LOOK_AXES}{AXES_END}"), 1)
+        + &padding[SCALED_LOOK_AXES.len()..];
+    Ok(fixed.into_bytes())
+}
+
 /// The Snapmatic photo's copy draw: one quad into the photo target, once per photo. The GPU worker
 /// skips a draw while its pipeline compiles, so in a browser that never compiled this pipeline the
 /// photo is black. Pipelines in the seed are compiled while the game loads. Recorded by the GPU worker
@@ -615,7 +646,7 @@ pub fn serve_path(
     settings: &Settings,
 ) -> Result<PathBuf> {
     let name = relative.rsplit('/').next().unwrap_or_default();
-    if !(name.starts_with("game") && name.ends_with(".wasm")) {
+    if !(name.starts_with("game") && name.ends_with(".wasm")) && relative != CONTROL_SETTINGS {
         return Ok(source);
     }
     // ponytail: one lock for all files; builds are rare and take under a second.
@@ -672,23 +703,30 @@ fn build(
                 Err(e) => format!("{fix} not applied ({e:#})"),
             });
         };
-        if settings.memory_limit {
+        if name.ends_with(".meta") {
             outcome(
-                "memory limit",
-                limit_heaps(&mut wasm, settings.memory_limit_heaps),
+                "camera mouse fix",
+                add_scaled_look(&wasm).map(|fixed| wasm = fixed),
+            );
+        } else {
+            if settings.memory_limit {
+                outcome(
+                    "memory limit",
+                    limit_heaps(&mut wasm, settings.memory_limit_heaps),
+                );
+            }
+            if settings.cash_hotkey {
+                outcome(
+                    "cash hotkey",
+                    add_cash_hotkey(&wasm).map(|fixed| wasm = fixed),
+                );
+            }
+            outcome("photo fix", fix_memory_files(&mut wasm));
+            outcome(
+                "load game fix",
+                fix_log_waits(&wasm).map(|fixed| wasm = fixed),
             );
         }
-        if settings.cash_hotkey {
-            outcome(
-                "cash hotkey",
-                add_cash_hotkey(&wasm).map(|fixed| wasm = fixed),
-            );
-        }
-        outcome("photo fix", fix_memory_files(&mut wasm));
-        outcome(
-            "load game fix",
-            fix_log_waits(&wasm).map(|fixed| wasm = fixed),
-        );
         let summary = format!("{name}: {}", outcomes.join(", "));
         if applied {
             storage::atomic_write(target, &wasm, false)?;
@@ -703,4 +741,22 @@ fn build(
         let _ = std::fs::remove_file(target);
     }
     (summary, applied)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scaled_look_axes_keep_the_size() {
+        let meta = format!(
+            "<a><AxisDefinitions><Item/></AxisDefinitions></a>{}",
+            " ".repeat(400)
+        );
+        let fixed = String::from_utf8(add_scaled_look(meta.as_bytes()).unwrap()).unwrap();
+        assert_eq!(fixed.len(), meta.len());
+        assert!(fixed.contains(&format!("<Item/>{SCALED_LOOK_AXES}{AXES_END}</a> ")));
+        assert!(add_scaled_look(fixed.as_bytes()).is_err());
+        assert!(add_scaled_look(meta.trim_end().as_bytes()).is_err());
+    }
 }
