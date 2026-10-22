@@ -930,6 +930,20 @@ async fn route(
         r.headers_mut().insert("Content-Length", length.into());
         return Ok(r);
     }
+    if relative.ends_with("shaders/pipelines.json")
+        || relative.ends_with("shaders/pipelines_low.json")
+    {
+        let seed =
+            crate::patches::pipeline_seed(&relative, tokio::fs::read_to_string(&file_path).await?);
+        let length = seed.len();
+        let mut r = response(
+            StatusCode::OK,
+            if head { String::new() } else { seed },
+            "application/json",
+        );
+        r.headers_mut().insert("Content-Length", length.into());
+        return Ok(r);
+    }
     if relative.ends_with(".wasm") {
         let folder = state.folder.clone();
         file_path = tokio::task::spawn_blocking(move || {

@@ -304,10 +304,12 @@ const NO_ROOM_CHECK: &[u8] =
     b"\x10\xfb\x4d\x0b\x41\x01\x21\x06\x0b\x20\x29\x42\xf0\x00\x7c\x24\x00\x20\x06\x0d\x01";
 const WHOLE_LOAD_CHECK: &[u8] =
     b"\x20\x00\x41\x80\x02\x41\x00\x20\x03\x1b\x41\x08\x41\x00\x20\x01\x1b\x72";
-/// Offsets of the heap count, the no-room flag and the whole-load flag in `heap_wasm`.
+const MEMORY_NAME_CHECK: &[u8] = b"\x20\x01\x42\xc4\x8e\xb9\x01\x42\x07\x10\xbe\xc6\x05\x0d\x00\x20\x01\x42\x08\x7c\x21\x00\x03\x40";
+/// Offsets of the heap count, the no-room flag, the whole-load flag and the memory file name start in `heap_wasm`.
 const HEAP_AT: usize = 4 + 18;
 const NO_ROOM_AT: usize = 4 + 20 + 3 + 5;
 const WHOLE_LOAD_AT: usize = 4 + 20 + 3 + 21 + 3 + 4;
+const MEMORY_NAME_AT: usize = 4 + 20 + 3 + 21 + 3 + 18 + 4 + 18;
 fn heap_wasm() -> Vec<u8> {
     [
         &b"head"[..],
@@ -317,8 +319,31 @@ fn heap_wasm() -> Vec<u8> {
         b"and",
         WHOLE_LOAD_CHECK,
         b"tail",
+        MEMORY_NAME_CHECK,
     ]
     .concat()
+}
+#[test]
+fn photo_fix_changes_one_byte_and_adds_the_pipeline_once() {
+    let mut wasm = heap_wasm();
+    patches::fix_memory_files(&mut wasm).unwrap();
+    let changed: Vec<_> = (0..wasm.len())
+        .filter(|&i| wasm[i] != heap_wasm()[i])
+        .collect();
+    assert_eq!(changed, [MEMORY_NAME_AT]);
+    assert_eq!(wasm[MEMORY_NAME_AT], 10);
+    for mut unknown in [
+        b"no check here".to_vec(),
+        [heap_wasm(), heap_wasm()].concat(),
+    ] {
+        assert!(patches::fix_memory_files(&mut unknown).is_err());
+    }
+    let seed = patches::add_photo_pipeline(r#"[{"vs":"other"}]"#).unwrap();
+    let pipelines: Vec<Value> = serde_json::from_str(&seed).unwrap();
+    assert_eq!(pipelines.len(), 2);
+    assert_eq!(pipelines[1]["rt"], json!(["rgba8unorm"]));
+    assert_eq!(patches::add_photo_pipeline(&seed).unwrap(), seed);
+    assert!(patches::add_photo_pipeline("{}").is_err());
 }
 #[test]
 fn memory_limit_changes_only_its_three_bytes() {
@@ -471,6 +496,8 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
     std::fs::create_dir_all(&build).unwrap();
     std::fs::write(build.join("game.wasm"), heap_wasm()).unwrap();
     std::fs::write(build.join("game.other.wasm"), b"unknown build").unwrap();
+    std::fs::create_dir_all(build.join("shaders")).unwrap();
+    std::fs::write(build.join("shaders/pipelines.json"), r#"[{"vs": "other"}]"#).unwrap();
     let fixed = temp.path().join("patched/b/x/game.wasm");
     let c = client();
     for (enabled, heaps, expected) in [(true, 6, 5), (true, 8, 7), (false, 6, 0x1f)] {
@@ -489,6 +516,7 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
             .unwrap();
         let mut want = heap_wasm();
         want[HEAP_AT] = expected;
+        want[MEMORY_NAME_AT] = 10;
         if enabled {
             want[NO_ROOM_AT] = 0;
             want[WHOLE_LOAD_AT] = 0;
@@ -509,11 +537,28 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
             .unwrap();
         assert_eq!(other.bytes().await.unwrap(), "unknown build");
         assert_eq!(std::fs::read(build.join("game.wasm")).unwrap(), heap_wasm());
-        assert_eq!(fixed.is_file(), enabled);
+        assert!(fixed.is_file());
+        let seed: Vec<Value> = c
+            .get(format!("{url}/b/x/shaders/pipelines.json"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!((seed.len(), &seed[1]["rt"]), (2, &json!(["rgba8unorm"])));
+        assert_eq!(
+            std::fs::read_to_string(build.join("shaders/pipelines.json")).unwrap(),
+            r#"[{"vs": "other"}]"#
+        );
         let status = patches::status().join("\n");
+        assert!(
+            status.contains("pipelines.json: photo fix applied"),
+            "{status}"
+        );
         if enabled {
             assert!(
-                status.contains("game.wasm: memory limit applied"),
+                status.contains("game.wasm: memory limit applied, photo fix applied"),
                 "{status}"
             );
             assert!(
@@ -522,7 +567,11 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
             );
             assert!(!temp.path().join("patched/b/x/game.other.wasm").exists());
         } else {
-            assert!(status.is_empty(), "{status}");
+            assert!(status.contains("game.wasm: photo fix applied"), "{status}");
+            assert!(
+                status.contains("game.other.wasm: photo fix not applied"),
+                "{status}"
+            );
         }
         host.stop().await;
     }
@@ -534,7 +583,10 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
         c.get(format!("{url}/b/x/game.wasm")).send().await.unwrap();
         let modified = std::fs::metadata(&fixed).unwrap().modified().unwrap();
         assert_eq!(*built.get_or_insert(modified), modified);
-        assert_eq!(patches::status(), ["game.wasm: memory limit applied"]);
+        assert_eq!(
+            patches::status(),
+            ["game.wasm: memory limit applied, photo fix applied"]
+        );
         host.stop().await;
     }
 }
@@ -560,6 +612,7 @@ async fn cash_hotkey_serves_fixed_game_and_page() {
         };
         let mut want = cash_wasm(CASH_HOTKEY);
         let mut other = heap_wasm();
+        patches::fix_memory_files(&mut other).unwrap();
         if memory_limit {
             patches::limit_heaps(&mut want, 6).unwrap();
             patches::limit_heaps(&mut other, 6).unwrap();

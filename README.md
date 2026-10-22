@@ -47,6 +47,7 @@ Set these under **Game fixes** before you start the server. Your game files stay
 
 - **Limit the game's streaming memory** (on by default): stops the "Invalid fixup" crash after long play. The default limit is 1.5 GB.
 - **Cash hotkey in Story mode** (off by default): each press of the key right of 0 adds $999,999.
+- **Snapmatic photos** (always on): taking a photo with the phone camera no longer stops the game, and the photo is no longer black.
 
 Used the old `cash_hotkey.py` script? Delete the `GrandV-assets/overrides/` folder, or the old hotkey stays on.
 

@@ -28,8 +28,15 @@ const NO_ROOM_AT: usize = 5;
 const WHOLE_LOAD_CHECK: &[u8] =
     b"\x20\x00\x41\x80\x02\x41\x00\x20\x03\x1b\x41\x08\x41\x00\x20\x01\x1b\x72";
 const WHOLE_LOAD_AT: usize = 4;
+/// fiDeviceMemory::Create: `strncmp(name, "memory:", 7); br_if; name + 8` starts reading the buffer
+/// address of a `memory:$%p,...` file name. musl's %p writes "0x" first, so Create reads address 0 and
+/// every write into the file fails; the Snapmatic photo is written this way, and libjpeg's write error
+/// ends the game. Open already skips the "0x"; the byte at `MEMORY_NAME_AT` (8) becomes 10 to do the
+/// same. A null %p is 16 zeros without "0x", so skipping two of them still reads 0.
+const MEMORY_NAME_CHECK: &[u8] = b"\x20\x01\x42\xc4\x8e\xb9\x01\x42\x07\x10\xbe\xc6\x05\x0d\x00\x20\x01\x42\x08\x7c\x21\x00\x03\x40";
+const MEMORY_NAME_AT: usize = 18;
 /// Part of the patched/ stamp key; bump it when a fix changes, so old fixed copies are rebuilt.
-const FIXES_VERSION: u32 = 1;
+const FIXES_VERSION: u32 = 2;
 
 /// Caps the streaming resource heaps (256 MB each). Without a cap they keep growing and the game
 /// stops with "Invalid fixup". A file that finds no free block then waits for a later frame, the way
@@ -51,6 +58,30 @@ pub fn limit_heaps(wasm: &mut [u8], heaps: u8) -> Result<()> {
     wasm[no_room + NO_ROOM_AT] = 0;
     wasm[whole_load + WHOLE_LOAD_AT] = 0;
     Ok(())
+}
+
+/// Lets the game write into memory files, so a Snapmatic photo no longer ends the game.
+pub fn fix_memory_files(wasm: &mut [u8]) -> Result<()> {
+    let at =
+        find_unique(wasm, MEMORY_NAME_CHECK).context("game file differs from the known version")?;
+    wasm[at + MEMORY_NAME_AT] = 10;
+    Ok(())
+}
+
+/// The Snapmatic photo's copy draw: one quad into the photo target, once per photo. The GPU worker
+/// skips a draw while its pipeline compiles, so in a browser that never compiled this pipeline the
+/// photo is black. Pipelines in the seed are compiled while the game loads. Recorded by the GPU worker
+/// (IndexedDB `gta-pipelines`).
+const PHOTO_PIPELINE: &str = r#"{"vs":"4e1d5d361e0ed0bc","ps":"01a05b914ee571f0","el":[[2013849738,0,6,0,0,0,0],[1009949074,0,6,0,12,0,0],[3888318712,0,28,0,24,0,0],[197415955,0,16,0,28,0,0]],"st":[36],"tp":4,"sf":"","b":[0,0,0,2,1,1,2,1,1,15,0,2,1,1,2,1,1,15,0,2,1,1,2,1,1,15,0,2,1,1,2,1,1,15,0,2,1,1,2,1,1,15,0,2,1,1,2,1,1,15,0,2,1,1,2,1,1,15,0,2,1,1,2,1,1,15],"d":[0,0,8,0,65535,1,1,1,8,1,1,1,8],"r":[3,1,1,0,0,0,1,1,0,0],"rt":["rgba8unorm"],"n":1,"ds":"","ro":0}"#;
+
+/// Adds the photo pipeline to a pipeline seed (`shaders/pipelines*.json`).
+pub fn add_photo_pipeline(json: &str) -> Result<String> {
+    let mut seed: Vec<serde_json::Value> = serde_json::from_str(json).context("pipeline seed")?;
+    let photo: serde_json::Value = serde_json::from_str(PHOTO_PIPELINE)?;
+    if !seed.contains(&photo) {
+        seed.push(photo);
+    }
+    Ok(serde_json::to_string(&seed)?)
 }
 
 // Cash hotkey: game.html turns a key press into a flag byte in the engine's keyboard block, and the
@@ -418,6 +449,22 @@ pub fn cash_page(html: String) -> String {
     html
 }
 
+/// Returns a pipeline seed with the photo pipeline, or unchanged when it cannot be added.
+pub fn pipeline_seed(relative: &str, json: String) -> String {
+    let name = relative.rsplit('/').next().unwrap_or_default();
+    let (summary, json, applied) = match add_photo_pipeline(&json) {
+        Ok(fixed) => (format!("{name}: photo fix applied"), fixed, true),
+        Err(e) => (
+            format!("{name}: photo fix not applied ({e:#})"),
+            json,
+            false,
+        ),
+    };
+    let mut results = results().lock().unwrap_or_else(|e| e.into_inner());
+    remember(&mut results, relative, String::new(), summary, applied);
+    json
+}
+
 /// Returns the file to serve for `relative`: a fixed copy when a fix applies, else `source`.
 /// `source` is the asset or its override; the copy is rebuilt when it or the fix settings change.
 pub fn serve_path(
@@ -433,15 +480,6 @@ pub fn serve_path(
     // ponytail: one lock for all files; builds are rare and take under a second.
     let mut results = results().lock().unwrap_or_else(|e| e.into_inner());
     let patched = folder.join("patched");
-    if !settings.memory_limit && !settings.cash_hotkey {
-        results.remove(relative);
-        if patched.is_dir() {
-            let target = storage::safe_target(&patched, relative)?;
-            let _ = std::fs::remove_file(stamp_path(&target));
-            let _ = std::fs::remove_file(target);
-        }
-        return Ok(source);
-    }
     let meta = source.metadata()?;
     let key = format!(
         "{}\n{}\n{}\nfixes={FIXES_VERSION} memory_limit={} memory_limit_heaps={} cash_hotkey={}\n",
@@ -505,6 +543,7 @@ fn build(
                 add_cash_hotkey(&wasm).map(|fixed| wasm = fixed),
             );
         }
+        outcome("photo fix", fix_memory_files(&mut wasm));
         let summary = format!("{name}: {}", outcomes.join(", "));
         if applied {
             storage::atomic_write(target, &wasm, false)?;
