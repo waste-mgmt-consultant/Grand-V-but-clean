@@ -84,6 +84,47 @@ pub fn add_photo_pipeline(json: &str) -> Result<String> {
     Ok(serde_json::to_string(&seed)?)
 }
 
+// Snapmatic gallery photos: the engine thread sends the JPEG of each PGTA5<id> file it writes, in
+// Story (/userdata) and Sandbox (/sandbox), to PUT /photos/ (server.rs). Installed after the save
+// restore, so restored photos are not sent again. That thread never returns to its event loop, so
+// the request is synchronous. CPhotoBuffer layout: "JPEG", u32 buffer size, u32 image size, image.
+const PHOTO_EXPORT: &str = r#"onRuntimeInitialized: () => {
+                const close = FS.close;
+                FS.close = (stream) => {
+                    const path = stream.path || '', written = (stream.flags & 3) !== 0, name = /PGTA5\d+$/.exec(path);
+                    close(stream);
+                    if (!written || !name) return;
+                    try {
+                        const d = FS.readFile(path), view = new DataView(d.buffer, d.byteOffset, d.length);
+                        let jpeg = null;
+                        for (let t = 0; !jpeg && t + 12 <= d.length; t++) {
+                            if (view.getUint32(t) !== 0x4a504547) continue;
+                            const s = t + 12, e = s + view.getUint32(t + 8, true);
+                            if (e <= d.length && d[s] === 0xff && d[s + 1] === 0xd8) jpeg = d.subarray(s, e);
+                        }
+                        if (!jpeg) throw new Error('no JPEG');
+                        const x = new XMLHttpRequest();
+                        x.open('PUT', '/photos/' + name[0] + '.jpg', false);
+                        x.timeout = 5000;
+                        x.send(jpeg);
+                        self.__log('[loader] photo: ' + (x.status === 204 ? 'saved photos/' + name[0] + '.jpg' : name[0] + ' HTTP ' + x.status));
+                    } catch (e) { self.__log('[loader] photo: ' + name[0] + ' ' + e); }
+                };
+            },
+            "#;
+const PHOTO_ANCHOR: &str = "preRun: [";
+
+/// Adds the photo export to an engine loader (`loader.js`, `loader.movie.js`).
+pub fn add_photo_export(js: &str) -> Result<String> {
+    if js.contains(PHOTO_EXPORT) {
+        return Ok(js.into());
+    }
+    let (Some(at), 1) = (js.find(PHOTO_ANCHOR), js.matches(PHOTO_ANCHOR).count()) else {
+        bail!("engine loader differs from the known version");
+    };
+    Ok([&js[..at], PHOTO_EXPORT, &js[at..]].concat())
+}
+
 // Cash hotkey: game.html turns a key press into a flag byte in the engine's keyboard block, and the
 // CStatsMgr::Update entry consumes the flag through the GetStatId / IsKeyValid / IncrementStat path a
 // money pickup uses. Functions are found by name, values by byte pattern.
@@ -463,6 +504,22 @@ pub fn pipeline_seed(relative: &str, json: String) -> String {
     let mut results = results().lock().unwrap_or_else(|e| e.into_inner());
     remember(&mut results, relative, String::new(), summary, applied);
     json
+}
+
+/// Returns an engine loader with the photo export, or unchanged when it cannot be added.
+pub fn photo_loader(relative: &str, js: String) -> String {
+    let name = relative.rsplit('/').next().unwrap_or_default();
+    let (summary, js, applied) = match add_photo_export(&js) {
+        Ok(fixed) => (format!("{name}: photo export applied"), fixed, true),
+        Err(e) => (
+            format!("{name}: photo export not applied ({e:#})"),
+            js,
+            false,
+        ),
+    };
+    let mut results = results().lock().unwrap_or_else(|e| e.into_inner());
+    remember(&mut results, relative, String::new(), summary, applied);
+    js
 }
 
 /// Returns the file to serve for `relative`: a fixed copy when a fix applies, else `source`.

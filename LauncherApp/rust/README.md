@@ -12,7 +12,7 @@ Put the launcher next to your `GrandV-assets` folder, or select the folder with 
 
 **Stop server**, or closing the window, stops this launcher's server, LAN discovery and relay sessions. It does not stop another program's server. **Join a server** works without a local game folder.
 
-- **Game fixes** caps the game's streaming memory and can add a cash hotkey. See [Game fixes](../../README.md#game-fixes).
+- **Game fixes** caps the game's streaming memory, fixes Snapmatic photos and can add a cash hotkey. With **This PC**, each photo saved to the phone gallery is also saved as a JPG file in `GrandV-assets/photos/`. See [Game fixes](../../README.md#game-fixes).
 - **Check game files** finds damaged game archives. See [Check game files](../../README.md#check-game-files).
 
 LAN hosting creates a private CA and server certificate when needed. Share only `lan-root-ca.cer`; each client installs trust by hand. The launcher never changes system trust. **Create / renew LAN certificate** renews the server certificate and keeps the root. Roots made by the older Python launcher are kept with their original fingerprint and private key. A certificate and key that you supply are checked and used as they are, without automatic renewal.

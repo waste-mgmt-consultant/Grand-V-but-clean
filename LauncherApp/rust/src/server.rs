@@ -772,6 +772,26 @@ async fn route(
             }
         }
     }
+    if let Some(name) = path.strip_prefix("/photos/")
+        && method == Method::PUT
+    {
+        // Photos go to the host's folder: only the player on this PC may write there.
+        if settings.mode != "device" || !settings.public_origin.is_empty() || !conn.ip.is_loopback()
+        {
+            return Ok(failure(
+                StatusCode::FORBIDDEN,
+                "Photos are saved only for This PC",
+            ));
+        }
+        let body = to_bytes(req.into_body(), storage::MAX_PHOTO).await?;
+        let (folder, name) = (state.folder.clone(), name.to_string());
+        tokio::task::spawn_blocking(move || storage::put_photo(&folder, &name, &body)).await??;
+        return Ok(response(
+            StatusCode::NO_CONTENT,
+            Body::empty(),
+            "text/plain",
+        ));
+    }
     if path == "/log" && method == Method::POST {
         let body = to_bytes(req.into_body(), 256 * 1024).await?;
         let text = String::from_utf8_lossy(&body).replace('\0', "");
@@ -940,6 +960,22 @@ async fn route(
             StatusCode::OK,
             if head { String::new() } else { seed },
             "application/json",
+        );
+        r.headers_mut().insert("Content-Length", length.into());
+        return Ok(r);
+    }
+    // Only This PC saves photos (see /photos/), so other audiences get the loader unchanged.
+    if settings.mode == "device"
+        && settings.public_origin.is_empty()
+        && (relative.ends_with("/loader.js") || relative.ends_with("/loader.movie.js"))
+    {
+        let js =
+            crate::patches::photo_loader(&relative, tokio::fs::read_to_string(&file_path).await?);
+        let length = js.len();
+        let mut r = response(
+            StatusCode::OK,
+            if head { String::new() } else { js },
+            "text/javascript",
         );
         r.headers_mut().insert("Content-Length", length.into());
         return Ok(r);

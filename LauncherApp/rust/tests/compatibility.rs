@@ -345,6 +345,83 @@ fn photo_fix_changes_one_byte_and_adds_the_pipeline_once() {
     assert_eq!(patches::add_photo_pipeline(&seed).unwrap(), seed);
     assert!(patches::add_photo_pipeline("{}").is_err());
 }
+#[tokio::test]
+async fn photo_export_hooks_loaders_and_saves_jpegs() {
+    let _guard = FIX_STATUS.write().unwrap_or_else(|e| e.into_inner());
+    let temp = fixture();
+    let build = temp.path().join("mirror/playgta5.com/b/x");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(build.join("loader.js"), "x({\n\tpreRun: [() => {}],\n});").unwrap();
+    std::fs::write(build.join("loader.movie.js"), "unknown loader").unwrap();
+    let host = start_unlocked(temp.path(), settings(), "").await;
+    let (c, url) = (client(), base(&host));
+    let get = |name: &str| c.get(format!("{url}/b/x/{name}")).send();
+    let loader = get("loader.js").await.unwrap().text().await.unwrap();
+    assert_eq!(loader.matches("onRuntimeInitialized").count(), 1);
+    assert!(loader.ends_with("preRun: [() => {}],\n});"));
+    assert_eq!(patches::add_photo_export(&loader).unwrap(), loader);
+    let movie = get("loader.movie.js").await.unwrap().text().await.unwrap();
+    assert_eq!(movie, "unknown loader");
+    let jpeg = b"\xff\xd8\xff\xe0 photo \xff\xd9";
+    for (name, body, status) in [
+        ("PGTA5902240930.jpg", &jpeg[..], 204),
+        ("PGTA5902240930.png", &jpeg[..], 400),
+        ("x/PGTA51.jpg", &jpeg[..], 400),
+        ("PGTA5.jpg", &jpeg[..], 400),
+        ("PGTA51.jpg", &b"not a jpeg"[..], 400),
+    ] {
+        let r = c
+            .put(format!("{url}/photos/{name}"))
+            .body(body.to_vec())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), status, "{name}");
+    }
+    let photos: Vec<_> = std::fs::read_dir(temp.path().join("photos"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(photos, ["PGTA5902240930.jpg"]);
+    assert_eq!(
+        std::fs::read(temp.path().join("photos/PGTA5902240930.jpg")).unwrap(),
+        jpeg
+    );
+    let status = patches::status().join("\n");
+    assert!(
+        status.contains("loader.js: photo export applied"),
+        "{status}"
+    );
+    assert!(
+        status.contains("loader.movie.js: photo export not applied"),
+        "{status}"
+    );
+    host.stop().await;
+    let mut public = settings();
+    public.public_origin = "https://grandv.example".into();
+    let host = start_unlocked(temp.path(), public, "").await;
+    let r = c
+        .put(format!("{}/photos/PGTA51.jpg", base(&host)))
+        .body(jpeg.to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 403);
+    assert!(!temp.path().join("photos/PGTA51.jpg").exists());
+    let loader = c
+        .get(format!("{}/b/x/loader.js", base(&host)))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        !loader
+            .text()
+            .await
+            .unwrap()
+            .contains("onRuntimeInitialized")
+    );
+    host.stop().await;
+}
 #[test]
 fn memory_limit_changes_only_its_three_bytes() {
     let mut wasm = heap_wasm();

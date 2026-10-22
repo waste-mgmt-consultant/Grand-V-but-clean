@@ -182,6 +182,24 @@ pub fn put(folder: &Path, path: &str, body: &[u8], mtime: Option<f64>) -> Result
     }
     update(&root, &target, false)
 }
+pub const MAX_PHOTO: usize = 8 * 1024 * 1024;
+/// Saves the JPEG of a Snapmatic gallery photo as `photos/PGTA5<id>.jpg`.
+pub fn put_photo(folder: &Path, name: &str, body: &[u8]) -> Result<()> {
+    let id = name
+        .strip_prefix("PGTA5")
+        .and_then(|n| n.strip_suffix(".jpg"))
+        .unwrap_or_default();
+    if id.is_empty()
+        || id.len() > 12
+        || !id.bytes().all(|b| b.is_ascii_digit())
+        || !body.starts_with(&[0xff, 0xd8, 0xff])
+    {
+        bail!("Invalid photo");
+    }
+    let photos = folder.join("photos");
+    std::fs::create_dir_all(&photos)?;
+    atomic_write(&safe_target(&photos, name)?, body, false)
+}
 pub fn delete(folder: &Path, path: &str) -> Result<()> {
     let (root, target) = userdata_target(folder, path)?;
     update(&root, &target, true)?;
