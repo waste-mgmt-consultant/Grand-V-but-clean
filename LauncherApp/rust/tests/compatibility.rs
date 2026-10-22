@@ -511,6 +511,10 @@ fn cash_wasm(inserted: &[u8]) -> Vec<u8> {
             [&b"\x00"[..], WHOLE_LOAD_CHECK, b"\x0b"].concat(),
         ),
     ];
+    module(&functions)
+}
+/// A game file with these functions after one imported function, and their names.
+fn module(functions: &[(&str, Vec<u8>)]) -> Vec<u8> {
     // Imports: one function (index 0), a memory and a global.
     let imports = b"\x03\x03env\x01f\x00\x00\x03env\x01m\x02\x01\x01\x02\x03env\x01g\x03\x7f\x00";
     let mut code = leb(functions.len());
@@ -530,6 +534,50 @@ fn cash_wasm(inserted: &[u8]) -> Vec<u8> {
         &sized(&name_section),
     ]
     .concat()
+}
+const FLUSH: &str = "rage::netLogImpl::Flush(bool)";
+const SWAP_FAILURE: &str = "rage::netLogImpl::HandleBufferSwapFailure()";
+const FLUSH_WAIT: &[u8] = b"\x20\x00\x42\x08\x7c\x21\x02\x03\x40";
+const SWAP_WAIT: &[u8] = b"\x04\x40\x03\x40";
+/// i64.const 6630952, the log spool thread's id.
+const SPOOL_ID: &[u8] = b"\x42\xa8\xdc\x94\x03";
+/// What V1's patch_shop_menus.py inserts after each wait loop (read from its play-tested game.wasm).
+const FLUSH_GUARD: &[u8] = b"\x42\xa8\xdc\x94\x03\x29\x03\x00\x42\x7f\x51\x0d\x01";
+const SWAP_GUARD: &[u8] = b"\x42\xa8\xdc\x94\x03\x29\x03\x00\x42\x7f\x51\x0d\x03";
+fn log_wasm(flush: &[u8], swap_failure: &[u8]) -> Vec<u8> {
+    module(&[
+        (FLUSH, [&b"\x00"[..], flush, b"\x0b"].concat()),
+        (SWAP_FAILURE, [&b"\x00"[..], swap_failure, b"\x0b"].concat()),
+    ])
+}
+#[test]
+fn load_game_fix_ends_both_log_waits() {
+    let flush = [SPOOL_ID, FLUSH_WAIT].concat();
+    let fixed = patches::fix_log_waits(&log_wasm(&flush, SWAP_WAIT)).unwrap();
+    assert_eq!(
+        fixed,
+        log_wasm(
+            &[&flush[..], FLUSH_GUARD].concat(),
+            &[SWAP_WAIT, SWAP_GUARD].concat()
+        )
+    );
+    assert_eq!(patches::fix_log_waits(&fixed).unwrap(), fixed);
+    for (unknown, why) in [
+        (heap_wasm(), "not a wasm file".into()),
+        (cash_wasm(b""), FLUSH.into()),
+        (log_wasm(FLUSH_WAIT, SWAP_WAIT), "spool thread id".into()),
+        (
+            log_wasm(&[&flush[..], FLUSH_WAIT].concat(), SWAP_WAIT),
+            format!("{FLUSH} wait loop"),
+        ),
+        (log_wasm(&flush, b""), format!("{SWAP_FAILURE} wait loop")),
+    ] {
+        let error = format!("{:#}", patches::fix_log_waits(&unknown).unwrap_err());
+        assert_eq!(
+            error,
+            format!("game file differs from the known version: {why}")
+        );
+    }
 }
 /// What the original cash_hotkey.py inserts into `cash_wasm`.
 const CASH_HOTKEY: &[u8] = b"\x42\xf4\xea\x91\x03\x2d\x00\x00\x04\x40\x42\xf4\xea\x91\x03\x41\x00\x3a\x00\x00\x23\x00\x42\x10\x7d\x24\x00\x23\x00\x42\x08\x7c\x42\x94\xc2\x92\x0c\x10\x03\x23\x00\x42\x08\x7c\x10\x04\x04\x40\x23\x00\x42\x08\x7c\x43\xf0\x23\x74\x49\x41\x03\x10\x05\x0b\x23\x00\x42\x10\x7c\x24\x00\x0b";
@@ -662,7 +710,9 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
         assert_eq!(*built.get_or_insert(modified), modified);
         assert_eq!(
             patches::status(),
-            ["game.wasm: memory limit applied, photo fix applied"]
+            [
+                "game.wasm: memory limit applied, photo fix applied, load game fix not applied (game file differs from the known version: not a wasm file)"
+            ]
         );
         host.stop().await;
     }

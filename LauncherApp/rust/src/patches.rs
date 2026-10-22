@@ -36,7 +36,7 @@ const WHOLE_LOAD_AT: usize = 4;
 const MEMORY_NAME_CHECK: &[u8] = b"\x20\x01\x42\xc4\x8e\xb9\x01\x42\x07\x10\xbe\xc6\x05\x0d\x00\x20\x01\x42\x08\x7c\x21\x00\x03\x40";
 const MEMORY_NAME_AT: usize = 18;
 /// Part of the patched/ stamp key; bump it when a fix changes, so old fixed copies are rebuilt.
-const FIXES_VERSION: u32 = 2;
+const FIXES_VERSION: u32 = 3;
 
 /// Caps the streaming resource heaps (256 MB each). Without a cap they keep growing and the game
 /// stops with "Invalid fixup". A file that finds no free block then waits for a later frame, the way
@@ -151,55 +151,10 @@ pub fn add_cash_hotkey(wasm: &[u8]) -> Result<Vec<u8>> {
     cash_hotkey(wasm).context("game file differs from the known version")
 }
 fn cash_hotkey(wasm: &[u8]) -> Result<Vec<u8>> {
-    ensure!(wasm.starts_with(b"\0asm\x01\0\0\0"), "not a wasm file");
-    let (mut imports, mut code, mut names) = (None, None, None);
-    let mut at = 8;
-    while at < wasm.len() {
-        let section = at;
-        let id = byte(wasm, &mut at)?;
-        let size = leb(wasm, &mut at)?;
-        let end = at
-            .checked_add(size)
-            .filter(|&end| end <= wasm.len())
-            .context("section size")?;
-        match id {
-            0 => {
-                let mut name = at;
-                let length = leb(wasm, &mut name)?;
-                if take(wasm, &mut name, length)? == b"name" {
-                    names = Some(name..end);
-                }
-            }
-            2 => imports = Some(at..end),
-            10 => code = Some((section, at..end)),
-            _ => {}
-        }
-        at = end;
-    }
-    let first = imported_functions(wasm, imports.context("no import section")?)?;
-    let names = function_names(wasm, names.context("no name section")?)?;
-    let index = |name: &[u8]| {
-        let mut found = names.iter().filter(|(_, n)| *n == name);
-        match (found.next(), found.next()) {
-            (Some((index, _)), None) => Ok(*index),
-            _ => bail!("{}", String::from_utf8_lossy(name)),
-        }
-    };
-    let (section_start, code) = code.context("no code section")?;
-    let mut at = code.start;
-    let count = leb(wasm, &mut at)?;
-    let mut bodies = Vec::new();
-    while at < code.end {
-        let size = leb(wasm, &mut at)?;
-        bodies.push(take(wasm, &mut at, size)?);
-    }
-    ensure!(bodies.len() == count, "code section");
-    let body = |name: &[u8]| {
-        let i = index(name)?
-            .checked_sub(first)
-            .context("imported function")?;
-        Ok::<_, anyhow::Error>((i, *bodies.get(i).context("function index")?))
-    };
+    let module = Module::parse(wasm)?;
+    let (names, code) = (&module.names, &module.code);
+    let index = |name: &[u8]| module.index(name);
+    let body = |name: &[u8]| module.body(name);
 
     // wasm_input_test_key: i64.const 255; i64.and; i64.const <keyboard block>; i64.add
     let (_, test_key) = body(INPUT_TEST_KEY)?;
@@ -286,20 +241,149 @@ fn cash_hotkey(wasm: &[u8]) -> Result<Vec<u8>> {
         return Ok(wasm.to_vec());
     }
     let update = [&update[..at], &hotkey, &update[at..]].concat();
-    let mut payload = encode_leb(count);
-    for (i, body) in bodies.iter().enumerate() {
-        let body = if i == update_at { &update[..] } else { body };
-        payload.extend(encode_leb(body.len()));
-        payload.extend_from_slice(body);
+    Ok(module.with_bodies(wasm, &[(update_at, update)]))
+}
+
+/// rage::netLogImpl::Flush(true) waits until the log spool thread has written the pending buffer. Load Game (and
+/// the return after Replay Mission) runs CNetwork::Shutdown, which stops that thread, before CAILogManager::ShutDown
+/// flushes its logs, so the game froze right after "shutdown!". HandleBufferSwapFailure has the same wait. Each
+/// wait loop now starts with `if (spoolThreadId == -1) break`: br_if 1 leaves Flush's loop and its if; br_if 3
+/// leaves the swap wait, its retry loop and the block around them, the early return after which the caller drops
+/// the log line. Same bytes as the V1 fix.
+const LOG_WAITS: [(&[u8], &[u8], u8); 2] = [
+    (
+        b"rage::netLogImpl::Flush(bool)",
+        b"\x20\x00\x42\x08\x7c\x21\x02\x03\x40",
+        1,
+    ),
+    (
+        b"rage::netLogImpl::HandleBufferSwapFailure()",
+        b"\x04\x40\x03\x40",
+        3,
+    ),
+];
+/// rage::LogSpoolFunction's thread id; CNetwork::Shutdown sets it to -1 once the thread has stopped.
+const SPOOL_THREAD_ID: i64 = 6_630_952;
+
+/// Ends the log waits that froze the game on Load Game.
+pub fn fix_log_waits(wasm: &[u8]) -> Result<Vec<u8>> {
+    log_waits(wasm).context("game file differs from the known version")
+}
+fn log_waits(wasm: &[u8]) -> Result<Vec<u8>> {
+    let module = Module::parse(wasm)?;
+    let id = [&[0x42][..], &encode_sleb(SPOOL_THREAD_ID)].concat();
+    let (_, flush) = module.body(LOG_WAITS[0].0)?;
+    ensure!(flush.windows(id.len()).any(|w| w == id), "spool thread id");
+    let mut replaced = Vec::new();
+    for (name, wait, depth) in LOG_WAITS {
+        let (i, body) = module.body(name)?;
+        let at = find_unique(body, wait)
+            .with_context(|| format!("{} wait loop", String::from_utf8_lossy(name)))?
+            + wait.len();
+        // i64.load; i64.const -1; i64.eq; br_if
+        let guard = [&id[..], b"\x29\x03\x00\x42\x7f\x51\x0d", &[depth]].concat();
+        if !body[at..].starts_with(&guard) {
+            replaced.push((i, [&body[..at], &guard, &body[at..]].concat()));
+        }
     }
-    Ok([
-        &wasm[..section_start],
-        &[10],
-        &encode_leb(payload.len()),
-        &payload,
-        &wasm[code.end..],
-    ]
-    .concat())
+    Ok(if replaced.is_empty() {
+        wasm.to_vec()
+    } else {
+        module.with_bodies(wasm, &replaced)
+    })
+}
+
+/// The parts of a wasm module the code fixes read.
+struct Module<'a> {
+    /// Index of the first function with a body; the imported ones come before it.
+    first: usize,
+    names: Vec<(usize, &'a [u8])>,
+    /// The code section with its id and size, and its contents.
+    section: Range<usize>,
+    code: Range<usize>,
+    bodies: Vec<&'a [u8]>,
+}
+impl<'a> Module<'a> {
+    fn parse(wasm: &'a [u8]) -> Result<Self> {
+        ensure!(wasm.starts_with(b"\0asm\x01\0\0\0"), "not a wasm file");
+        let (mut imports, mut code, mut names) = (None, None, None);
+        let mut at = 8;
+        while at < wasm.len() {
+            let section = at;
+            let id = byte(wasm, &mut at)?;
+            let size = leb(wasm, &mut at)?;
+            let end = at
+                .checked_add(size)
+                .filter(|&end| end <= wasm.len())
+                .context("section size")?;
+            match id {
+                0 => {
+                    let mut name = at;
+                    let length = leb(wasm, &mut name)?;
+                    if take(wasm, &mut name, length)? == b"name" {
+                        names = Some(name..end);
+                    }
+                }
+                2 => imports = Some(at..end),
+                10 => code = Some((section, at..end)),
+                _ => {}
+            }
+            at = end;
+        }
+        let first = imported_functions(wasm, imports.context("no import section")?)?;
+        let names = function_names(wasm, names.context("no name section")?)?;
+        let (section_start, code) = code.context("no code section")?;
+        let mut at = code.start;
+        let count = leb(wasm, &mut at)?;
+        let mut bodies = Vec::new();
+        while at < code.end {
+            let size = leb(wasm, &mut at)?;
+            bodies.push(take(wasm, &mut at, size)?);
+        }
+        ensure!(bodies.len() == count, "code section");
+        Ok(Self {
+            first,
+            names,
+            section: section_start..code.end,
+            code,
+            bodies,
+        })
+    }
+    fn index(&self, name: &[u8]) -> Result<usize> {
+        let mut found = self.names.iter().filter(|(_, n)| *n == name);
+        match (found.next(), found.next()) {
+            (Some((index, _)), None) => Ok(*index),
+            _ => bail!("{}", String::from_utf8_lossy(name)),
+        }
+    }
+    /// The position in `bodies` and the body of the function called `name`.
+    fn body(&self, name: &[u8]) -> Result<(usize, &'a [u8])> {
+        let i = self
+            .index(name)?
+            .checked_sub(self.first)
+            .context("imported function")?;
+        Ok((i, *self.bodies.get(i).context("function index")?))
+    }
+    /// `wasm` with the bodies at the given positions replaced.
+    fn with_bodies(&self, wasm: &[u8], replaced: &[(usize, Vec<u8>)]) -> Vec<u8> {
+        let mut payload = encode_leb(self.bodies.len());
+        for (i, body) in self.bodies.iter().enumerate() {
+            let body = replaced
+                .iter()
+                .find(|(at, _)| *at == i)
+                .map_or(*body, |(_, new)| &new[..]);
+            payload.extend(encode_leb(body.len()));
+            payload.extend_from_slice(body);
+        }
+        [
+            &wasm[..self.section.start],
+            &[10],
+            &encode_leb(payload.len()),
+            &payload,
+            &wasm[self.section.end..],
+        ]
+        .concat()
+    }
 }
 
 /// Adds the cash hotkey's key handler to game.html.
@@ -601,6 +685,10 @@ fn build(
             );
         }
         outcome("photo fix", fix_memory_files(&mut wasm));
+        outcome(
+            "load game fix",
+            fix_log_waits(&wasm).map(|fixed| wasm = fixed),
+        );
         let summary = format!("{name}: {}", outcomes.join(", "));
         if applied {
             storage::atomic_write(target, &wasm, false)?;
