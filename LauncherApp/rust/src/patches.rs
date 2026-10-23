@@ -35,8 +35,15 @@ const WHOLE_LOAD_AT: usize = 4;
 /// same. A null %p is 16 zeros without "0x", so skipping two of them still reads 0.
 const MEMORY_NAME_CHECK: &[u8] = b"\x20\x01\x42\xc4\x8e\xb9\x01\x42\x07\x10\xbe\xc6\x05\x0d\x00\x20\x01\x42\x08\x7c\x21\x00\x03\x40";
 const MEMORY_NAME_AT: usize = 18;
+/// The game's "Allow script debug draw" toggle starts on, so scripts show their debug text, such as
+/// the blue "runVendingMachine" near vending machines. Only the script debug draw commands read it, in 21
+/// checks of the form `i64.const 6643884; i32.load8_u; i32.const 1; i32.ne; br_if 0`. The load becomes
+/// `i32.const 0` and nops, so the commands draw nothing.
+const DEBUG_DRAW_CHECK: &[u8] = b"\x42\xac\xc1\x95\x03\x2d\x00\x00\x41\x01\x47\x0d\x00";
+const DEBUG_DRAW_OFF: &[u8] = b"\x41\x00\x01\x01\x01\x01\x01\x01";
+const DEBUG_DRAW_CHECKS: usize = 21;
 /// Part of the patched/ stamp key; bump it when a fix changes, so old fixed copies are rebuilt.
-const FIXES_VERSION: u32 = 3;
+const FIXES_VERSION: u32 = 4;
 
 /// Caps the streaming resource heaps (256 MB each). Without a cap they keep growing and the game
 /// stops with "Invalid fixup". A file that finds no free block then waits for a later frame, the way
@@ -65,6 +72,24 @@ pub fn fix_memory_files(wasm: &mut [u8]) -> Result<()> {
     let at =
         find_unique(wasm, MEMORY_NAME_CHECK).context("game file differs from the known version")?;
     wasm[at + MEMORY_NAME_AT] = 10;
+    Ok(())
+}
+
+/// Hides the scripts' debug text and shapes.
+pub fn hide_debug_draw(wasm: &mut [u8]) -> Result<()> {
+    let found: Vec<usize> = wasm
+        .windows(DEBUG_DRAW_CHECK.len())
+        .enumerate()
+        .filter(|(_, w)| *w == DEBUG_DRAW_CHECK)
+        .map(|(at, _)| at)
+        .collect();
+    ensure!(
+        found.len() == DEBUG_DRAW_CHECKS,
+        "game file differs from the known version"
+    );
+    for at in found {
+        wasm[at..at + DEBUG_DRAW_OFF.len()].copy_from_slice(DEBUG_DRAW_OFF);
+    }
     Ok(())
 }
 
@@ -722,6 +747,7 @@ fn build(
                 );
             }
             outcome("photo fix", fix_memory_files(&mut wasm));
+            outcome("debug text fix", hide_debug_draw(&mut wasm));
             outcome(
                 "load game fix",
                 fix_log_waits(&wasm).map(|fixed| wasm = fixed),
@@ -758,5 +784,14 @@ mod tests {
         assert!(fixed.contains(&format!("<Item/>{SCALED_LOOK_AXES}{AXES_END}</a> ")));
         assert!(add_scaled_look(fixed.as_bytes()).is_err());
         assert!(add_scaled_look(meta.trim_end().as_bytes()).is_err());
+    }
+
+    #[test]
+    fn debug_draw_checks_turn_off() {
+        let mut wasm = DEBUG_DRAW_CHECK.repeat(DEBUG_DRAW_CHECKS);
+        hide_debug_draw(&mut wasm).unwrap();
+        let off = [DEBUG_DRAW_OFF, &DEBUG_DRAW_CHECK[DEBUG_DRAW_OFF.len()..]].concat();
+        assert_eq!(wasm, off.repeat(DEBUG_DRAW_CHECKS));
+        assert!(hide_debug_draw(&mut wasm).is_err());
     }
 }

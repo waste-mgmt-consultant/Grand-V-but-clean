@@ -51,6 +51,7 @@ Set these under **Game fixes** before you start the server. Your game files stay
 - **Cash hotkey in Story mode** (off by default): each press of the key right of 0 adds $999,999.
 - **Load Game freeze** (always on): loading a save in the game (Load Game, or the return after Replay Mission) no longer freezes the game.
 - **Script camera with the mouse** (always on): in missions that hand you a camera, such as Paparazzo's film camera, the mouse now turns the camera.
+- **Script debug text** (always on): the blue debug text that some scripts draw, such as `runVendingMachine` near vending machines, no longer shows.
 - **Snapmatic photos** (always on): taking a photo with the phone camera no longer stops the game, and the photo is no longer black.
 - **Photos as JPG files** (always on, **This PC** only): each photo you save to the phone gallery, in Story or Sandbox, is also saved as `GrandV-assets/photos/PGTA5<number>.jpg`. The file stays when you delete the photo in the game. The game does not keep Sandbox files, so after a page reload the Sandbox gallery is empty again. The JPG file stays.
 
