@@ -711,7 +711,7 @@ async fn memory_limit_serves_fixed_copy_and_keeps_assets() {
         assert_eq!(
             patches::status(),
             [
-                "game.wasm: memory limit applied, photo fix applied, load game fix not applied (game file differs from the known version: not a wasm file)"
+                "game.wasm: memory limit applied, photo fix applied, debug text fix not applied (game file differs from the known version), load game fix not applied (game file differs from the known version: not a wasm file)"
             ]
         );
         host.stop().await;
