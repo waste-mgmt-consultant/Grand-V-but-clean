@@ -4,7 +4,7 @@
 
 No memecoin shit. Just the game.
 
-A fork of [SebasKitten/Grand-V](https://gitlab.com/SebasKitten/Grand-V) without the coin and donation parts:
+A fork of [SebasKitten/Grand-V](https://github.com/SebasKitten/Grand-V) without the coin and donation parts:
 
 - The launcher has no donation window and no wallet list.
 - The app name has no `$` ticker.
@@ -112,11 +112,9 @@ Active work is ongoing in the following areas:
 
 ## Reporting issues
 
-Report game bugs [upstream](https://gitlab.com/SebasKitten/Grand-V/-/issues) with your device model, OS/browser versions, the type of bug, and steps to reproduce it.
+Report bugs [here](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/issues): game bugs, the launcher downloads, the coin removal, the game fixes and the game file check. Give your device model, OS/browser versions, the type of bug, and steps to reproduce it.
 
-Report problems with this fork [here](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/issues): the launcher downloads, the coin removal, the game fixes and the game file check.
-
-Not sure where a crash belongs? First run **Check game files** and repair any damage. Then try again with the **Game fixes** turned off. If the crash goes away, report it here.
+Before you report a crash, run **Check game files** and repair any damage. Then try again with the **Game fixes** turned off, and say whether the crash still happens.
 
 ## Disclaimer & Copyright
 
