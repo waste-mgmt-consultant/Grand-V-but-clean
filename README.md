@@ -114,7 +114,9 @@ Active work is ongoing in the following areas:
 
 Report bugs [here](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/issues): game bugs, the launcher downloads, the coin removal, the game fixes and the game file check. Give your device model, OS/browser versions, the type of bug, and steps to reproduce it.
 
-Before you report a crash, run **Check game files** and repair any damage. Then stop the server, turn off **Limit the game's streaming memory** and **Cash hotkey in Story mode** under **Game fixes**, and start the server again. Say whether the crash still happens. The other game fixes are always on.
+Before you report a crash, run **Check game files** and repair any damage. In the report, copy the error message from the screen and add the file from **Save diagnostics** (in the web launcher or the game controls).
+
+If the error is not "Invalid fixup", stop the server, turn off **Limit the game's streaming memory** and **Cash hotkey in Story mode** under **Game fixes**, and start the server again. Say whether the crash still happens. If it is "Invalid fixup", keep the memory limit on: without it, this crash comes back after long play. The other game fixes are always on.
 
 ## Disclaimer & Copyright
 
