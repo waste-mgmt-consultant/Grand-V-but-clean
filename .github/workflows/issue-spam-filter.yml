@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   moderate:
-    if: github.repository == 'SebasKitten/Grand-V' && !github.event.issue.pull_request
+    if: github.repository == 'waste-mgmt-consultant/Grand-V-but-clean' && !github.event.issue.pull_request
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
