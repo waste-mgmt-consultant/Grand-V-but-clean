@@ -113,6 +113,8 @@ Before you report a crash, run **Check game files** and repair any damage. In th
 
 If the error is not "Invalid fixup", stop the server, turn off **Limit the game's streaming memory** and **Cash hotkey in Story mode** under **Game fixes**, and start the server again. Say whether the crash still happens. If it is "Invalid fixup", keep the memory limit on: without it, this crash comes back after long play. The other game fixes are always on.
 
+This project never posts a fix as a command for you to paste into a terminal. If an issue or comment asks you to do that, do not run it; report the comment to GitHub.
+
 ## Disclaimer & Copyright
 
 This project is provided for educational purposes only.  
