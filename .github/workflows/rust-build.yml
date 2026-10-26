@@ -118,4 +118,4 @@ jobs:
           cd release
           sha256sum GrandV-Launcher-* > SHA256SUMS.txt
           gh release create "$TAG" * --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" \
-            --notes "Launchers built by GitHub Actions from $GITHUB_SHA. They are not signed by Apple or Microsoft; see the README."
+            --notes "Launchers built by GitHub Actions from $GITHUB_SHA. They are not signed by Apple or Microsoft."
