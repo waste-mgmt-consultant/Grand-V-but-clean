@@ -1,7 +1,5 @@
 # Grand-V, but clean
 
-## [Download the launcher](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/releases/latest) for Windows, macOS or Linux
-
 No memecoin shit. Just the game.
 
 A fork of [SebasKitten/Grand-V](https://github.com/SebasKitten/Grand-V) without the coin and donation parts:
@@ -12,10 +10,7 @@ A fork of [SebasKitten/Grand-V](https://github.com/SebasKitten/Grand-V) without 
 
 The launcher also fixes known game crashes and can check the game files for damage. See [Game fixes](#game-fixes) and [Check game files](#check-game-files).
 
-**[Download the launcher from Releases](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/releases)** for Windows, macOS or Linux. GitHub Actions builds it from this repo. You can also [build it yourself](LauncherApp/rust/README.md#build-and-test). The game assets are separate.
-
-- macOS: the app is not notarized. After you unzip it, run `xattr -dr com.apple.quarantine "GrandV back-end host.app"`, or allow it in System Settings → Privacy & Security.
-- Windows: SmartScreen can warn about the unsigned exe. Click More info → Run anyway.
+GitHub Actions builds the launcher for Windows, macOS and Linux from this repo. You can also [build it yourself](LauncherApp/rust/README.md#build-and-test). The game assets are separate.
 
 ## Quick start
 

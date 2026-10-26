@@ -1,6 +1,6 @@
 # GrandV Back end launcher
 
-The desktop host for Grand-V. It serves the game from your `GrandV-assets` folder to browsers on this PC, on your LAN or on a public website, and it runs the multiplayer relay. Release packages name the program `GrandV back-end host` (`.exe` on Windows, `.app` on macOS). Download them from [Releases](https://github.com/waste-mgmt-consultant/Grand-V-but-clean/releases). The game assets are separate.
+The desktop host for Grand-V. It serves the game from your `GrandV-assets` folder to browsers on this PC, on your LAN or on a public website, and it runs the multiplayer relay. Release packages name the program `GrandV back-end host` (`.exe` on Windows, `.app` on macOS). The game assets are separate.
 
 `assets/app.png` is the GrandV logo. The build embeds it as the window and taskbar icon and as the Windows executable's icon. macOS packaging makes an `.icns` from the same image. Linux packages include the PNG and a desktop-entry template; to install, put the executable and the icon on the usual search paths. The icon build trims the logo's transparent padding and centers it in a square with a small border. The supplied PNG stays unchanged.
 
